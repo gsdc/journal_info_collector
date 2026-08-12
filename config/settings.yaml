@@ -1,0 +1,74 @@
+# 전역 설정
+inspire:
+  base_url: "https://inspirehep.net/api"
+  request_delay_sec: 1.0   # INSPIRE-HEP rate limit 배려용 호출 간 대기 시간
+  timeout_sec: 30
+
+# DOI 기준으로 ORCID/ISSN/출판일을 보강 조회 (INSPIRE 값이 비어있을 때 채움)
+# CrossRef의 funder(FundRef) 메타데이터가 있으면 KISTI의 funder DOI로 Ack를
+# 1차 판정한다(예: APS 저널은 대체로 이 메타데이터를 갖고 있음). 이 메타데이터가
+# 없는 출판사(Elsevier/Springer 등)는 arXiv 원문 텍스트 판정으로 넘어간다.
+crossref:
+  base_url: "https://api.crossref.org/works"
+  request_delay_sec: 0.5
+  timeout_sec: 30
+  kisti_funder_doi: "10.13039/501100003708"
+
+arxiv:
+  eprint_url: "https://export.arxiv.org/e-print/{arxiv_id}"
+  request_delay_sec: 3.0   # arXiv 권장 최소 대기 시간
+  timeout_sec: 60
+  # Acknowledgements 절을 찾을 때 훑어볼 파일명 우선순위 (없으면 전체 .tex 병합 후 탐색)
+  ack_filename_hints:
+    - "fa_"          # ALICE: funding-acknowledgement 파일
+    - "ack"
+    - "acknowledg"
+
+output:
+  csv_path: "output/journal_report.csv"
+  candidates_path: "data/candidates.json"
+  encoding: "utf-8-sig"   # 엑셀에서 한글 깨짐 방지
+
+# 알려진 저널의 ISSN (INSPIRE 저널 레코드에 ISSN이 비어있을 때의 대체값)
+# 필요할 때마다 채워나가면 됨. 키는 INSPIRE short_title 기준.
+# 값 형식: "print_ISSN,EISSN" (electronic-only 저널은 별도 print ISSN이 없어 단일 값만 기재)
+journal_issn_fallback:
+  "Phys.Rev.D": "2470-0010,2470-0029"
+  "Phys.Rev.Lett.": "0031-9007,1079-7114"
+  "Phys.Rev.C": "2469-9985,2469-9993"
+  "Phys.Lett.B": "0370-2693,1873-2445"
+  "Eur.Phys.J.C": "1434-6044,1434-6052"
+  "Astrophys.J.": "0004-637X,1538-4357"
+  "Nature": "0028-0836,1476-4687"
+  "Phys.Scripta": "0031-8949,1402-4896"
+  "Nucl.Instrum.Meth.A": "0168-9002,1872-9576"
+  "Class.Quant.Grav.": "0264-9381,1361-6382"
+  "EPL": "0295-5075,1286-4854"
+  "JHEP": "1029-8479"  # electronic-only
+  "Astrophys.J.Lett.": "2041-8205,2041-8213"
+  "PTEP": "2050-3911"  # electronic-only
+  "Phys.Rev.X": "2160-3308"  # electronic-only
+  "Astrophys.J.Suppl.": "0067-0049,1538-4365"
+  "Eur.Phys.J.A": "1434-6001,1434-601X"
+  "Few Body Syst.": "0177-7963,1432-5411"
+  "JINST": "1748-0221"  # electronic-only
+  "Nature Phys.": "1745-2473,1745-2481"
+  "Phys.Atom.Nucl.": "1063-7788,1562-692X"
+  "Phys.Part.Nucl.": "1063-7796,1531-8559"
+  "Sci.Bull.": "2095-9273,2095-9281"
+  "Universe": "2218-1997"  # electronic-only
+  "Rept.Prog.Phys.": "0034-4885,1361-6633"
+  "JCAP": "1475-7516"  # electronic-only
+  "Chin.Phys.C": "1674-1137,2058-6132"
+  "Nucl.Phys.B": "0550-3213,1873-1562"
+  "Phys.Rept.": "0370-1573,1873-6270"
+  "Nature Commun.": "2041-1723"  # electronic-only
+  "PNAS": "0027-8424,1091-6490"
+  "EMBO JOURNAL": "0261-4189,1460-2075"
+  "EMBO Reports": "1469-221X,1469-3178"
+  "Molecules and Cells": "1016-8478,0219-1032"
+  "Science": "0036-8075,1095-9203"  # 기존 값(1095-9203)은 사실 online ISSN이었음 — print ISSN으로 정정
+  "BIOPHYSICAL JOURNAL": "0006-3495,1542-0086"
+  "Prog.Theor.Exp.Phys.": "2050-3911"  # electronic-only (PTEP와 동일 저널)
+  "Mach.Learn.Sci.Tech.": "2632-2153"  # electronic-only
+  "Nat.Comm.": "2041-1723"  # electronic-only (Nature Commun.과 동일 저널)

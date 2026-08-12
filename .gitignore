@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 파이프라인 실행 결과물 (재생성 가능, 커밋 대상 아님)
+data/
+output/
+
+# Claude Code 로컬 설정 (머신별 권한 허용 목록)
+.claude/settings.local.json
+
+# OS
+.DS_Store

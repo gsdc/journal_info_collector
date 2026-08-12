@@ -1,0 +1,33 @@
+# 커뮤니티(coll.)별 다운로드 설정
+#
+# name            : 최종 CSV의 'coll.' 컬럼에 들어갈 표시명
+# downloader       : src/downloaders/registry.py 에 등록된 다운로더 키
+# url               : 다운로드 대상 URL
+# inspire_collaboration : INSPIRE-HEP에서 이 커뮤니티를 검색할 때 쓰는 collaboration 명
+#                         (표시명과 다를 수 있음, 예: GW -> LIGO)
+communities:
+  - name: CMS
+    downloader: cms_csv
+    url: "https://cms-results.web.cern.ch/cms-results/public-results/publications/CMS/CMS_publications.csv"
+    inspire_collaboration: "CMS"
+
+  - name: ALICE
+    downloader: alice_html
+    url: "https://alice-publications.web.cern.ch/publications"
+    inspire_collaboration: "ALICE"
+
+  - name: Belle II
+    downloader: belle2_html
+    url: "https://docs.belle2.org/pub_data/publications/"
+    inspire_collaboration: "Belle-II"
+
+  - name: LIGO
+    downloader: ligo_html
+    url: "https://pnp.ligo.org/ppcomm/Papers.html"
+    inspire_collaboration: "LIGO"
+
+  # 추가 커뮤니티는 아래처럼 등록하고, src/downloaders/ 에 맞는 다운로더를 구현하면 됨.
+  # - name: KIAF
+  #   downloader: <다운로더 키>
+  #   url: "<다운로드 경로>"
+  #   inspire_collaboration: "<INSPIRE 검색용 collaboration 명>"
