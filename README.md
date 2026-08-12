@@ -29,7 +29,7 @@ flowchart TD
     L --> M["output/journal_report.csv"]
 ```
 
-`main.py fetch`가 A~K까지를 담당하고, 사사(Ack)의 최종 Y/N 판정과 원본 대비
+`main.py fetch`가 A\~K까지를 담당하고, 사사(Ack)의 최종 Y/N 판정과 원본 대비
 서지정보 불일치 검토는 `.claude/commands/build-report.md`(`/build-report`
 슬래시 커맨드)에서 LLM이 `data/candidates.json`을 읽어 수행한다(L~M).
 
