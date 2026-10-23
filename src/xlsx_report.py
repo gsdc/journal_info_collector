@@ -173,7 +173,8 @@ def build_workbook(candidates, communities, year):
             if cell.value:
                 cell.hyperlink = f"https://doi.org/{cell.value}"
                 cell.font = Font(name=FONT, color="0563C1", underline="single")
-        tabs.append((name, not cfg.get("reference_only"), len(rows)))
+        has_official = cfg.get("downloader") not in ("inspire_collab", "openalex_search")
+        tabs.append((name, not cfg.get("reference_only"), has_official))
 
     unpublished = [c for c in candidates if c.get("publication_status") != "published"]
     unpublished.sort(key=lambda c: (c["community"], c.get("raw_title") or ""))
@@ -212,8 +213,8 @@ def _write_summary(ws, tabs, year):
     ws["A2"] = f"작성일 {date.today().isoformat()} · journal_info_collector (python main.py report)"
     ws["A2"].font = normal
 
-    headers = ["커뮤니티", "구분", "출판 논문", "SCIE 논문", "유발 논문", "저자 Y", "사사 Y", "Funder ID Y",
-               "KIST 오태깅", "Funder 이름만"]
+    headers = ["커뮤니티", "구분", "출판 논문", "공식 페이지 출판", "기타 출처 확인 출판", "유발 논문", "증빙 불가",
+               "검증", "SCIE 논문", "저자 Y", "사사 Y", "Funder ID Y", "KIST 오태깅", "Funder 이름만"]
     ws.append([])
     ws.append(headers)
     header_row = ws.max_row
@@ -225,13 +226,24 @@ def _write_summary(ws, tabs, year):
         return f"'{sheet}'!${col[c]}${_HEADER_ROW + 1}:${col[c]}$2000"
 
     first = header_row + 1
-    for name, judged, _n in tabs:
+    for name, judged, has_official in tabs:
+        r = ws.max_row + 1  # 이 행 번호(검증 수식에서 같은 행 칸을 참조)
         ws.append([
             name,
             "판정 대상" if judged else "참고용",
             f"=COUNTA({rng(name, 'DOI')})",
-            f'=COUNTIF({rng(name, "SCIE")},"Y")',
+            # 커뮤니티 공식 출판 목록에 '출판'으로 표시된 논문(출처 칸 "커뮤니티:출판"). 공식
+            # 페이지가 없는 커뮤니티(INSPIRE·OpenAlex 검색이 목록)는 "-"
+            f'=COUNTIF({rng(name, "출처")},"커뮤니티:출판*")' if has_official else "-",
+            # 공식 페이지에서는 출판이 아닌데 INSPIRE·OpenAlex로 출판 확인된 논문(공식 페이지가
+            # 없으면 전부 여기). 출판 논문에서 빼지 않고 따로 세서 아래 검증이 의미 있게 한다.
+            (f'=COUNTA({rng(name, "DOI")})-COUNTIF({rng(name, "출처")},"커뮤니티:출판*")'
+             if has_official else f"=COUNTA({rng(name, 'DOI')})"),
             f'=COUNTIF({rng(name, "유발논문")},"Y")',
+            f'=COUNTIF({rng(name, "유발논문")},"N")',
+            # (공식 페이지 출판 + 기타 출처 확인) = (유발 논문 + 증빙 불가) 인지
+            f'=IF(N(D{r})+E{r}=F{r}+G{r},"일치","불일치")',
+            f'=COUNTIF({rng(name, "SCIE")},"Y")',
             f'=COUNTIF({rng(name, "Auth")},"Y")',
             f'=COUNTIF({rng(name, "Ack")},"Y")',
             f'=COUNTIF({rng(name, "Funder")},"Y")',
@@ -241,8 +253,11 @@ def _write_summary(ws, tabs, year):
     last = ws.max_row
     ws.append([
         "판정 대상 합계", "",
-        *[f'=SUMIF($B${first}:$B${last},"판정 대상",{get_column_letter(i)}{first}:{get_column_letter(i)}{last})'
-          for i in range(3, len(headers) + 1)],
+        *[
+            (f'=IF(N(D{last + 1})+E{last + 1}=F{last + 1}+G{last + 1},"일치","불일치")' if headers[i - 1] == "검증"
+             else f'=SUMIF($B${first}:$B${last},"판정 대상",{get_column_letter(i)}{first}:{get_column_letter(i)}{last})')
+            for i in range(3, len(headers) + 1)
+        ],
     ])
     total_row = ws.max_row
     for r in ws.iter_rows(min_row=first, max_row=total_row):
@@ -257,7 +272,8 @@ def _write_summary(ws, tabs, year):
         "· SCIE·IF·JIF 상위%: config/journals_<연도>.tsv(JCR에서 정리)를 ISSN으로 매칭. ISSN 없음·SCIE 아님은 유발 논문 N, 표에 없는 저널은 보류.",
         "· ISSN은 전자판 출판이어도 인쇄판 우선. 게재일은 CrossRef·INSPIRE 중 이른 날짜(온라인 게재일).",
         "· 출처: 커뮤니티 공식 목록 / INSPIRE / OpenAlex(KISTI 검색)에서 확인 여부.",
-        "· (참고) 탭: 논문 수 파악용 커뮤니티 — 유발 논문 판정 대상이 아니며 합계에서 제외.",
+        "· 출판 논문 = 공식 페이지 출판 + 기타 출처 확인 출판(공식 페이지엔 출판 아님, INSPIRE·OpenAlex로 확인) = 유발 논문 + 증빙 불가. '검증' 열은 두 합이 같은지 확인한다.",
+        "· (참고) 탭: 논문 수 파악용 커뮤니티 — 유발 논문 판정 대상이 아니며 합계에서 제외. 공식 페이지가 없어 '공식 페이지 출판'은 '-'.",
         "· 출판 미확인 탭: 커뮤니티 목록에는 있으나 아직 출판이 확인되지 않은 논문(다음 조사에서 재확인).",
     ]
     ws.append([])

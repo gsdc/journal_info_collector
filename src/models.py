@@ -20,7 +20,8 @@ class RawPublication:
     # pub_date_raw가 없을 때(아직 미출판) 연도 필터링용 대체 날짜.
     # 보통 투고일(Date Sub 등) 또는 arXiv ID에서 유추한 연-월.
     submitted_date_raw: Optional[str] = None
-    # "published"(DOI 있음) / "accepted"(게재확정, DOI 미부여) /
+    # "published"(DOI 있음) / "published_no_doi"(페이지엔 출판으로 입력, DOI 링크 없음) /
+    # "accepted"(게재확정, DOI 미부여) /
     # "submitted"(투고/심사중) / "superseded"(철회·대체됨) / "unknown"
     status: str = "published"
     source_url: Optional[str] = None

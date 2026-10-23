@@ -331,6 +331,7 @@ def _supplement(raw_pubs, name, year, collab_records, openalex_records, min_auth
 
 _PAGE_STATUS_LABEL = {
     "published": "출판",
+    "published_no_doi": "출판(DOI 미표기)",
     "accepted": "게재확정 표기",
     "submitted": "투고 표기",
     "preprint": "프리프린트 표기",
@@ -533,6 +534,8 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
                     continue
                 print("[fetch]   -> 유발논문 근거 확정됨(재조사 생략)", file=sys.stderr)
                 final["origin"] = raw.origin
+                # 원본 페이지 상태는 실행마다 바뀔 수 있어(게재확정 → 출판 등) 최신 값으로 갱신
+                final["raw_status"] = raw.status
                 candidates.append(final)
                 continue
 

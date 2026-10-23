@@ -62,7 +62,9 @@ class Belle2Downloader(BaseDownloader):
                     doi = None
                     text = journal_citation_raw.lower()
                     if text.startswith("published"):
-                        status = "accepted"  # 저널 게재확정, 이 페이지엔 DOI 링크 미표시
+                        # 페이지에는 "published in …"(출판)으로 입력돼 있지만 DOI 링크가 없다.
+                        # 출판 표시는 맞으므로 게재확정과 구분하고, DOI는 파이프라인이 찾는다.
+                        status = "published_no_doi"
                     elif text.startswith("submitted"):
                         status = "submitted"
                     else:
