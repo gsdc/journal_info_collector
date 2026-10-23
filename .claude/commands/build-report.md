@@ -18,8 +18,10 @@ FundRef(funder) 메타데이터에서 KISTI의 funder DOI(`10.13039/501100003708
 출판 논문은 **조건에 맞든 안 맞든 전부** CSV에 넣고, 아래 세 근거를 각 컬럼에
 따로 표기한다. 셋 중 하나라도 "Y"면 KISTI 유발 논문이고, 하나도 없으면 모든
 근거 컬럼이 비어 있거나 "N"인 채로 남는다(그래도 행은 포함한다).
-`유발근거`·`Funder 수정요청` 컬럼은 csv_writer가 세 컬럼 값으로 자동 계산하므로
-직접 채우지 않는다.
+`유발논문`(Y/N)·`유발근거`·`Funder 수정요청` 컬럼은 csv_writer가 세 컬럼 값과 SCIE로
+자동 계산하므로 직접 채우지 않는다. 유발논문은 SCIE 논문이면서 근거가 하나라도 있을 때 Y.
+엑셀에서는 유발논문 Y 행을 녹색, 결격(SCIE 아님·ISSN 없음)을 붉은색, 출판은 확인됐지만
+증빙이 없는 행을 노란색으로 칠한다.
 
 **SCIE 저널 논문만 유발논문으로 센다.** SCIE 여부·IF·JIF 기준 첫 번째 카테고리 상위%는
 사람이 JCR에서 정리한 `config/journals_<연도>.tsv`를 Python이 ISSN으로 매칭해
@@ -35,10 +37,10 @@ ISSN은 전자판으로 출판됐어도 인쇄판을 우선 기입한다(인쇄�
 
 `출처` 컬럼(`candidate.source_label`)은 논문을 어디서 확인했는지 판단 근거로 남긴다:
 `커뮤니티:<출판|게재확정 표기|투고 표기|없음|공식목록 없음> / INSPIRE:<O|O(제목 대조)|X> /
-OpenAlex:<O|O(출판 확인)|X|->`. "O(출판 확인)"은 INSPIRE에서 출판이 확인되지 않아
-OpenAlex 제목 검색으로 출판본을 찾은 경우다. 커뮤니티 페이지에 없던 논문은 끝에 "(INSPIRE 목록에서 보충)" 또는
-"(OpenAlex에서만 발견)"이 붙는다. OpenAlex는 KISTI funder·소속·담당자 ORCID로
-검색한 결과라 "X"는 OpenAlex에 없다는 뜻이 아니라 KISTI 관련으로 잡히지 않았다는 뜻이다.
+OpenAlex:<O|O(KISTI)|O(출판 확인)|X|->`. OpenAlex "O"는 논문이 OpenAlex에 있음,
+"O(KISTI)"는 KISTI funder·소속·담당자 ORCID 검색에도 잡힘, "O(출판 확인)"은 INSPIRE에서
+출판이 확인되지 않아 OpenAlex 제목 검색으로 출판본을 찾은 경우다. 커뮤니티 페이지에 없던 논문은 끝에 "(INSPIRE 목록에서 보충)" 또는
+"(OpenAlex에서만 발견)"이 붙는다.
 
 1. **Auth (저자)** — `auth_status`를 그대로 쓴다. Python이 지정 담당자 명단
    (`config/responsible_authors.yaml`)과 ORCID/이름 대조를 이미 마쳤다.
@@ -130,7 +132,7 @@ ENIGMA — `config/communities.yaml`의 `reference_only: true`)은 논문이 얼
      "Ack": "<Y|N|미확인>  (사사 원문 기준)",
      "Funder": "<Y|KIST오태깅|KIST확인|이름만|N>",
      "출처": "<candidate.source_label>",
-     "비고": "<candidate.pub_date_future가 true면 '게재 예정(<date>)', 아니면 빈 값>"
+     "비고": "<pub_date_future면 '게재 예정(<date>)'> + <config/paper_notes.yaml의 해당 DOI 메모> (' / '로 연결)"
    }
    ```
 
@@ -143,7 +145,15 @@ ENIGMA — `config/communities.yaml`의 `reference_only: true`)은 논문이 얼
    ```
    python -m src.csv_writer data/final_rows.json output/journal_report.csv
    python -m src.csv_writer data/final_rows_reference.json output/journal_report_reference.csv
+   python main.py report --year <연도>
    ```
+
+   마지막 명령은 엑셀 파일 하나(`output/journal_report_<연도>.xlsx`)를 만든다: 요약 탭
+   (커뮤니티별 출판·SCIE·유발 논문·근거별 건수, 수식) + 커뮤니티별 탭(참고용은
+   "(참고) " 접두) + 출판 미확인 탭. 엑셀은 candidates.json에서 같은 행 규칙
+   (`csv_writer.candidate_to_row`)으로 직접 만들므로, 이 단계에서 Ack를 바꾼 행이
+   있으면 그 판정이 엑셀에도 반영되도록 candidates.json의 `ack_text_status`를 함께
+   고친 뒤 실행한다.
 
 7. 사용자에게 다음을 요약해서 보고한다. 아래 항목(유발논문 집계, 근거 엇갈림,
    Funder 수정요청 등)은 **판정 대상 커뮤니티만** 대상으로 하고, 참고용 커뮤니티는

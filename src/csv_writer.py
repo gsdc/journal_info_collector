@@ -18,6 +18,7 @@ COLUMNS = [
     "Auth",
     "Ack",
     "Funder",
+    "유발논문",
     "유발근거",
     "Funder 수정요청",
     "출처",
@@ -83,20 +84,73 @@ def funder_fix(row):
     return _FUNDER_FIX.get(row.get("Funder"), "")
 
 
+def finalize_row(row, number=None):
+    """COLUMNS 순서의 행을 만들고 자동 계산 컬럼(유발근거·Funder 수정요청·SCIE·비고)을 채운다.
+    CSV와 엑셀 출력이 같은 규칙을 쓰도록 한곳에 둔다."""
+    out = {col: row.get(col, "") for col in COLUMNS}
+    if number is not None:
+        out["No."] = number
+    out["유발근거"] = evidence_summary(out)
+    # 판정 결과: SCIE 논문이면서 근거가 하나라도 있으면 유발 논문
+    out["유발논문"] = "Y" if out["유발근거"] else "N"
+    out["Funder 수정요청"] = funder_fix(out)
+    out["SCIE"] = _scie(out) or out.get("SCIE", "")
+    out["비고"] = _notes(out)
+    return out
+
+
+_FUNDER_VALUES = ("Y", "KIST오태깅", "KIST확인", "이름만")
+
+
+_paper_notes = None
+
+
+def _manual_note(doi):
+    """config/paper_notes.yaml의 논문별 수동 메모."""
+    global _paper_notes
+    if _paper_notes is None:
+        from . import config
+
+        _paper_notes = config.load_paper_notes()
+    return _paper_notes.get((doi or "").lower(), "")
+
+
+def candidate_to_row(c):
+    """candidates.json의 출판 논문 하나를 보고서 행(dict)으로 옮긴다(자동 계산 컬럼 제외).
+    /build-report의 행 스키마와 같은 규칙: Ack는 사사 원문 판정, Funder는 funder ID 판정."""
+    return {
+        "title": c.get("inspire_title") or c.get("raw_title") or "",
+        "journal": c.get("journal") or "",
+        "ISSN": c.get("issn") or "",
+        "Vol": c.get("volume") or "",
+        "Page": c.get("page") or "",
+        "coll.": c.get("community") or "",
+        "date": c.get("date") or "",
+        "IF": c.get("jif") or "",
+        "JIF 상위%": c.get("jif_top_pct") or "",
+        "SCIE": c.get("scie") or "",
+        "DOI": c.get("doi") or "",
+        "Auth": c.get("auth_status") or "",
+        "Ack": c.get("ack_text_status") or "",
+        "Funder": c.get("ack_funder_status") if c.get("ack_funder_status") in _FUNDER_VALUES else "N",
+        "출처": c.get("source_label") or "",
+        "비고": " / ".join(
+            n for n in (
+                f"게재 예정({c.get('date')})" if c.get("pub_date_future") else "",
+                _manual_note(c.get("doi")),
+            ) if n
+        ),
+    }
+
+
 def write_report_csv(rows, path, encoding="utf-8-sig"):
     """rows: COLUMNS의 일부/전체 키를 갖는 dict의 리스트.
-    'No.', '유발근거', 'Funder 수정요청'은 항상 여기서 다시 계산하고, '비고'에는 ISSN 없음 표시를 덧붙인다."""
+    'No.', '유발논문', '유발근거', 'Funder 수정요청'은 항상 여기서 다시 계산하고, '비고'에는 ISSN 없음 표시를 덧붙인다."""
     with open(path, "w", newline="", encoding=encoding) as f:
         writer = csv.DictWriter(f, fieldnames=COLUMNS)
         writer.writeheader()
         for i, row in enumerate(rows, 1):
-            out = {col: row.get(col, "") for col in COLUMNS}
-            out["No."] = i
-            out["유발근거"] = evidence_summary(out)
-            out["Funder 수정요청"] = funder_fix(out)
-            out["SCIE"] = _scie(out) or out.get("SCIE", "")
-            out["비고"] = _notes(out)
-            writer.writerow(out)
+            writer.writerow(finalize_row(row, i))
 
 
 def _main():

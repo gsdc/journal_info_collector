@@ -24,6 +24,7 @@ from .reconcile import (
     is_collab_paper,
     min_authors,
     matching_community,
+    openalex_existing_dois,
     openalex_kisti_works,
 )
 
@@ -336,9 +337,12 @@ _PAGE_STATUS_LABEL = {
 }
 
 
-def _source_label(c, community_cfg, openalex_dois):
-    """출처 컬럼: 커뮤니티 공식 목록 / INSPIRE / OpenAlex(KISTI 검색) 각각에서
-    이 논문이 확인되는지. 판정의 근거를 사람이 볼 수 있게 남긴다."""
+def _source_label(c, community_cfg, openalex_dois, openalex_existing=None):
+    """출처 컬럼: 커뮤니티 공식 목록 / INSPIRE / OpenAlex 각각에서 이 논문이
+    확인되는지. 판정의 근거를 사람이 볼 수 있게 남긴다.
+    OpenAlex: "O" 논문이 있음, "O(KISTI)" KISTI funder·소속·담당자 검색에도 잡힘,
+    "O(출판 확인)" INSPIRE로 확인 못 한 출판을 OpenAlex 제목 검색으로 확인, "X" 없음,
+    "-" 조회 실패."""
     origin = c.get("origin", "community")
     if origin != "community":
         page = "없음"
@@ -354,12 +358,17 @@ def _source_label(c, community_cfg, openalex_dois):
     else:
         inspire = "O"
 
+    doi = (c.get("doi") or "").lower()
     if c.get("match_status") == "matched_via_openalex":
         openalex = "O(출판 확인)"
-    elif openalex_dois is None:
+    elif openalex_dois is not None and doi in openalex_dois:
+        openalex = "O(KISTI)"
+    elif openalex_existing is not None and doi in openalex_existing:
+        openalex = "O"
+    elif openalex_existing is None and openalex_dois is None:
         openalex = "-"
     else:
-        openalex = "O" if (c.get("doi") or "").lower() in openalex_dois else "X"
+        openalex = "X"
 
     label = f"커뮤니티:{page} / INSPIRE:{inspire} / OpenAlex:{openalex}"
     if origin == "inspire":
@@ -681,6 +690,16 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
         deduped.append(c)
     candidates = deduped
 
+    # 출처 표기용: 출판 논문이 OpenAlex에 있는지(KISTI 검색과 별개로 존재 여부만) 확인
+    openalex_existing = None
+    if year is not None and not limit_per_community:
+        try:
+            openalex_existing = openalex_existing_dois(
+                settings, [c.get("doi") for c in candidates if c.get("publication_status") == "published"]
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"[fetch] WARN OpenAlex 존재 확인 실패({e}) - 출처의 OpenAlex 칸은 KISTI 검색 기준", file=sys.stderr)
+
     today = date.today()
     cfg_by_name = {c["name"]: c for c in communities}
     # SCIE 여부·JIF·상위%는 사람이 갱신하는 JCR 표에서 매번 다시 채운다(확정 판정과 별개).
@@ -693,7 +712,9 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
             )
         d = parse_date(c.get("date"))
         c["pub_date_future"] = bool(d and d > today)
-        c["source_label"] = _source_label(c, cfg_by_name.get(c["community"], {}), openalex_dois)
+        c["source_label"] = _source_label(
+            c, cfg_by_name.get(c["community"], {}), openalex_dois, openalex_existing
+        )
         # 참고용 커뮤니티(유발논문 판정 대상 아님)는 최종 보고서에서 따로 낸다.
         c["reference_only"] = bool(cfg_by_name.get(c["community"], {}).get("reference_only"))
 

@@ -217,6 +217,24 @@ def _openalex_get(base_url, params, api_key):
     return resp.json()
 
 
+def openalex_existing_dois(settings, dois):
+    """DOI 목록 중 OpenAlex에 있는 것(소문자). 50개씩 묶어 조회한다(요청 수 최소화)."""
+    cfg = settings.get("openalex", {})
+    base_url = cfg.get("base_url", "https://api.openalex.org").rstrip("/")
+    api_key = os.environ.get(cfg.get("api_key_env", "OPENALEX_API_KEY"))
+    dois = sorted({d.lower() for d in dois if d})
+    found = set()
+    for i in range(0, len(dois), 50):
+        chunk = dois[i:i + 50]
+        data = _openalex_get(
+            base_url,
+            {"filter": "doi:" + "|".join(chunk), "per_page": 50, "select": "doi"},
+            api_key,
+        )
+        found |= {(w.get("doi") or "").replace("https://doi.org/", "").lower() for w in data["results"]}
+    return found
+
+
 def openalex_kisti_works(settings, orcids, year):
     """OpenAlex에서 KISTI funder·KISTI 소속·담당자 ORCID 중 하나라도 걸리는
     해당 연도 논문. 반환: {doi(소문자): {"work": ..., "via": set}}"""

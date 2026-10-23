@@ -27,6 +27,7 @@ arxiv:
 output:
   csv_path: "output/journal_report.csv"
   reference_csv_path: "output/journal_report_reference.csv"   # 참고용 커뮤니티(reference_only)
+  xlsx_path: "output/journal_report_{year}.xlsx"              # 커뮤니티별 탭 엑셀(python main.py report)
   candidates_path: "data/candidates.json"
   audit_path: "data/download_audit.json"        # 커뮤니티 페이지별 수집/제외 기록
   reconcile_path: "output/reconcile_report.md"  # 커뮤니티·INSPIRE·OpenAlex 대조 보고서

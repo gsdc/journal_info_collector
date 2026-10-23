@@ -21,6 +21,10 @@
   python main.py journals --year 2026 [--candidates data/candidates.json]
       -> 출판 논문들의 저널을 ISSN 기준으로 묶어 output/journals_2026.txt 로 정리.
          SCIE 여부·JIF·JIF 첫번째 카테고리·상위%는 JCR에서 채우는 빈 칸으로 둔다.
+
+  python main.py report --year 2026 [--candidates data/candidates.json]
+      -> 최종 결과를 엑셀 파일 하나(output/journal_report_2026.xlsx)로 정리.
+         요약 탭 + 커뮤니티별 탭(참고용은 "(참고) " 접두) + 출판 미확인 탭.
 """
 import argparse
 import json
@@ -29,6 +33,7 @@ from src.ack_gap_scan import scan_computing_ack_gap
 from src.pipeline import build_candidates, save_candidates
 from src.journal_list import write_journal_list
 from src.reconcile import run_reconcile
+from src.xlsx_report import write_xlsx_report
 
 
 def main():
@@ -55,6 +60,10 @@ def main():
     rec_p = sub.add_parser("reconcile", help="커뮤니티 페이지·INSPIRE·OpenAlex 대조 보고서")
     rec_p.add_argument("--year", type=int, required=True)
 
+    rp_p = sub.add_parser("report", help="최종 결과 엑셀(커뮤니티별 탭) 생성")
+    rp_p.add_argument("--year", type=int, required=True)
+    rp_p.add_argument("--candidates", default=None, help="candidates.json 경로(기본: 설정값)")
+
     jl_p = sub.add_parser("journals", help="SCIE/JIF 조사용 저널 목록(txt) 생성")
     jl_p.add_argument("--year", type=int, required=True)
     jl_p.add_argument("--candidates", default=None, help="candidates.json 경로(기본: 설정값)")
@@ -70,9 +79,17 @@ def main():
             run_reconcile(args.year, candidates=candidates, settings=settings)
             path, rows = write_journal_list(args.year, candidates=candidates, settings=settings)
             print(f"[journals] 저널 {len(rows)}개 -> {path}")
+            print(f"[report] 엑셀 -> {write_xlsx_report(args.year, candidates=candidates, settings=settings)}")
 
     elif args.cmd == "reconcile":
         run_reconcile(args.year)
+
+    elif args.cmd == "report":
+        candidates = None
+        if args.candidates:
+            with open(args.candidates, encoding="utf-8") as f:
+                candidates = json.load(f)
+        print(f"wrote {write_xlsx_report(args.year, candidates=candidates)}")
 
     elif args.cmd == "journals":
         candidates = None
