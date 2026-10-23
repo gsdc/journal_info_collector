@@ -1,6 +1,7 @@
 import difflib
 import hashlib
 import json
+import re
 import sys
 from datetime import date
 
@@ -26,6 +27,7 @@ from .reconcile import (
     matching_community,
     openalex_existing_dois,
     openalex_kisti_works,
+    _load_saved_openalex,
 )
 
 
@@ -241,6 +243,11 @@ def _outside_year(date_str, year, published=True):
     return not in_range(date_str, year=year)
 
 
+def _redact(text):
+    """오류 메시지에 들어간 요청 주소의 API 키 값을 지운다(로그에 키가 남지 않게)."""
+    return re.sub(r"(api_key=)[^&\s]+", r"\1***", str(text))
+
+
 def _summarize_audit(name, downloader, kept):
     """다운로더 기록을 요약하고, 사람이 봐야 하는 누락이 있으면 경고를 출력한다."""
     audit = downloader.audit
@@ -251,6 +258,7 @@ def _summarize_audit(name, downloader, kept):
         else:
             unexpected.append(d)
     summary = {
+        "error": audit.get("error"),
         "community": name,
         "rows": audit["rows"],
         "kept": kept,
@@ -439,20 +447,27 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
     if year is not None and not limit_per_community:
         orcids = [p["orcid"] for people in responsible_authors.values() for p in people if p.get("orcid")]
         try:
-            works = openalex_kisti_works(settings, orcids, year)
+            # 오늘 이미 받은 결과가 있으면 다시 받지 않는다(요청 한도 절약)
+            works = _load_saved_openalex(settings, year, same_day=True) or openalex_kisti_works(
+                settings, orcids, year
+            )
             openalex_dois = set(works)
             openalex_md = inspire_records_by_doi(settings, works)
             path = settings["output"].get("openalex_path", "data/openalex_kisti.json")
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(
-                    {"year": year, "works": {d: {**w["work"], "via": sorted(w["via"])} for d, w in works.items()}},
+                    {
+                        "year": year,
+                        "fetched": date.today().isoformat(),
+                        "works": {d: {**w["work"], "via": sorted(w["via"])} for d, w in works.items()},
+                    },
                     f, ensure_ascii=False, indent=1,
                 )
             print(f"[fetch] OpenAlex KISTI 관련 {year}년 논문 {len(works)}건 -> {path}", file=sys.stderr)
         except Exception as e:  # noqa: BLE001
-            print(f"[fetch] WARN OpenAlex 조회 실패({e}) - OpenAlex 보충/출처 표기 생략", file=sys.stderr)
+            print(f"[fetch] WARN OpenAlex 조회 실패({_redact(e)}) - OpenAlex 보충/출처 표기 생략", file=sys.stderr)
 
-    openalex_titles = OpenAlexTitleLookup(settings)
+    openalex_titles = OpenAlexTitleLookup(settings, cache=cache)
     if year is not None and not openalex_titles.enabled:
         print(
             "[fetch] OpenAlex API 키(OPENALEX_API_KEY) 없음 - 출판 미확인 논문의 OpenAlex 제목 검색 생략",
@@ -465,7 +480,13 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
         name = community_cfg["name"]
         print(f"[fetch] {name}: downloading list from {community_cfg['url']}", file=sys.stderr)
         downloader = get_downloader(community_cfg)
-        raw_pubs = downloader.fetch()
+        try:
+            raw_pubs = downloader.fetch()
+        except Exception as e:  # noqa: BLE001
+            # 커뮤니티 하나의 목록 수집이 실패해도(예: OpenAlex 요청 한도 429) 나머지는 계속한다.
+            print(f"[fetch] WARN {name}: 논문 목록 수집 실패 - 이번 실행에서 제외: {_redact(e)}", file=sys.stderr)
+            downloader.audit["error"] = _redact(e)
+            raw_pubs = []
         audits.append(_summarize_audit(name, downloader, len(raw_pubs)))
         for raw in raw_pubs:
             _drop_impossible_pub_date(raw)
@@ -569,7 +590,7 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
                     oa_doi = openalex_titles.find_published_doi(raw.title, year - 1)
                 except Exception as e:  # noqa: BLE001
                     oa_doi = None
-                    note = (note + f" / OpenAlex 제목 검색 오류: {e}").strip(" /")
+                    note = (note + f" / OpenAlex 제목 검색 오류: {_redact(e)}").strip(" /")
                 if oa_doi:
                     effective_doi = oa_doi
                     try:
@@ -698,11 +719,15 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
     openalex_existing = None
     if year is not None and not limit_per_community:
         try:
+            existence_cache = SqliteCache.from_settings(settings)
             openalex_existing = openalex_existing_dois(
-                settings, [c.get("doi") for c in candidates if c.get("publication_status") == "published"]
+                settings,
+                [c.get("doi") for c in candidates if c.get("publication_status") == "published"],
+                cache=existence_cache,
             )
+            existence_cache.close()
         except Exception as e:  # noqa: BLE001
-            print(f"[fetch] WARN OpenAlex 존재 확인 실패({e}) - 출처의 OpenAlex 칸은 KISTI 검색 기준", file=sys.stderr)
+            print(f"[fetch] WARN OpenAlex 존재 확인 실패({_redact(e)}) - 출처의 OpenAlex 칸은 KISTI 검색 기준", file=sys.stderr)
 
     today = date.today()
     cfg_by_name = {c["name"]: c for c in communities}

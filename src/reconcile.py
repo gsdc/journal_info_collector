@@ -15,6 +15,7 @@ import os
 import re
 import sys
 import time
+from datetime import date
 
 import requests
 
@@ -126,6 +127,11 @@ def _brief(metadata):
     }
 
 
+def redact_api_key(text):
+    """오류 메시지에 들어간 요청 주소의 API 키 값을 지운다(로그에 키가 남지 않게)."""
+    return re.sub(r"(api_key=)[^&\s]+", r"\1***", str(text))
+
+
 _FIELDS = "titles,dois,arxiv_eprints,imprints,publication_info,document_type,collaborations,author_count"
 
 
@@ -217,13 +223,17 @@ def _openalex_get(base_url, params, api_key):
     return resp.json()
 
 
-def openalex_existing_dois(settings, dois):
-    """DOI 목록 중 OpenAlex에 있는 것(소문자). 50개씩 묶어 조회한다(요청 수 최소화)."""
+def openalex_existing_dois(settings, dois, cache=None):
+    """DOI 목록 중 OpenAlex에 있는 것(소문자). 50개씩 묶어 조회한다(요청 수 최소화).
+    한 번 있다고 확인된 DOI는 캐시에 남겨 다시 묻지 않는다."""
     cfg = settings.get("openalex", {})
     base_url = cfg.get("base_url", "https://api.openalex.org").rstrip("/")
     api_key = os.environ.get(cfg.get("api_key_env", "OPENALEX_API_KEY"))
     dois = sorted({d.lower() for d in dois if d})
     found = set()
+    if cache is not None:
+        found = {d for d in dois if cache.get("openalex_exists", d) is not None}
+        dois = [d for d in dois if d not in found]
     for i in range(0, len(dois), 50):
         chunk = dois[i:i + 50]
         data = _openalex_get(
@@ -233,7 +243,11 @@ def openalex_existing_dois(settings, dois):
             {"filter": "doi:" + "|".join(chunk), "per_page": 200, "select": "doi"},
             api_key,
         )
-        found |= {(w.get("doi") or "").replace("https://doi.org/", "").lower() for w in data["results"]}
+        new = {(w.get("doi") or "").replace("https://doi.org/", "").lower() for w in data["results"]}
+        found |= new
+        if cache is not None:
+            for d in new:
+                cache.set("openalex_exists", d, {})
     return found
 
 
@@ -286,16 +300,42 @@ class OpenAlexTitleLookup:
     정규화한 제목이 완전히 같은 저널 논문만 인정한다(비슷한 제목 오매칭 방지).
     """
 
-    def __init__(self, settings):
+    RECHECK_DAYS = 7  # 못 찾은 결과를 다시 검색하기까지의 기간(요청 한도 절약)
+
+    def __init__(self, settings, cache=None):
+        self._cache = cache
+        self.rate_limited = False
         cfg = settings.get("openalex", {})
         self.base_url = cfg.get("base_url", "https://api.openalex.org").rstrip("/")
         self.api_key = os.environ.get(cfg.get("api_key_env", "OPENALEX_API_KEY"))
         self.enabled = bool(self.api_key)
 
     def find_published_doi(self, title, since_year):
-        if not self.enabled or not title:
+        if not self.enabled or self.rate_limited or not title:
             return None
         key = normalize_title(title)
+        if self._cache is not None:
+            cached = self._cache.get("openalex_title", key)
+            if cached is not None:
+                if cached.get("doi"):
+                    return cached["doi"]
+                checked = cached.get("checked", "")
+                if checked and (date.today() - date.fromisoformat(checked)).days < self.RECHECK_DAYS:
+                    return None
+        try:
+            doi = self._search(title, since_year, key)
+        except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code == 429:
+                # 요청 한도 초과: 이번 실행에서는 더 묻지 않는다(실패 요청이 쌓이지 않게)
+                self.rate_limited = True
+                print("[fetch] WARN OpenAlex 요청 한도 초과 - 이번 실행의 제목 검색 중단", file=sys.stderr)
+                return None
+            raise
+        if self._cache is not None:
+            self._cache.set("openalex_title", key, {"doi": doi, "checked": date.today().isoformat()})
+        return doi
+
+    def _search(self, title, since_year, key):
         # LaTeX 명령·기호를 지운 단어만 검색어로 쓴다(OpenAlex 검색 문법과 충돌 방지)
         words = re.sub(r"\\[a-zA-Z]+|<[^>]+>|[^A-Za-z0-9 ]", " ", title).split()
         if not words:
@@ -439,8 +479,9 @@ def write_report(path, year, unresolved, supplemented, inspire_result, openalex_
         f.write("\n".join(lines) + "\n")
 
 
-def _load_saved_openalex(settings, year):
-    """fetch가 저장한 OpenAlex 결과가 같은 연도면 재사용한다(무료 요청 한도 절약)."""
+def _load_saved_openalex(settings, year, same_day=False):
+    """fetch가 저장한 OpenAlex 결과가 같은 연도면 재사용한다(요청 한도 절약).
+    same_day=True면 오늘 저장한 것만 쓴다(fetch에서 새로 받을지 판단할 때)."""
     path = settings["output"].get("openalex_path", "data/openalex_kisti.json")
     try:
         with open(path, encoding="utf-8") as f:
@@ -448,6 +489,8 @@ def _load_saved_openalex(settings, year):
     except (OSError, ValueError):
         return None
     if saved.get("year") != year:
+        return None
+    if same_day and saved.get("fetched") != date.today().isoformat():
         return None
     return {d: {"work": w, "via": set(w.get("via", []))} for d, w in saved["works"].items()}
 
@@ -477,7 +520,7 @@ def run_reconcile(year, candidates=None, settings=None):
         works = _load_saved_openalex(settings, year) or openalex_kisti_works(settings, orcids, year)
         openalex_result = classify_openalex(settings, communities, keys, works, year)
     except requests.RequestException as e:
-        print(f"[reconcile] WARN OpenAlex 조회 실패: {e}", file=sys.stderr)
+        print(f"[reconcile] WARN OpenAlex 조회 실패: {redact_api_key(e)}", file=sys.stderr)
         openalex_result = None
 
     path = settings["output"].get("reconcile_path", "output/reconcile_report.md")
