@@ -24,6 +24,9 @@ class RawPublication:
     # "submitted"(투고/심사중) / "superseded"(철회·대체됨) / "unknown"
     status: str = "published"
     source_url: Optional[str] = None
+    # 이 논문을 어디서 찾았는지: "community"(커뮤니티 공식 목록) /
+    # "inspire"(INSPIRE 컬래버레이션 출판 목록으로 보충) / "openalex"(OpenAlex KISTI 검색으로만 발견)
+    origin: str = "community"
 
 
 @dataclass
@@ -44,6 +47,11 @@ class InspireRecord:
     pub_date: Optional[str]
     authors: list = field(default_factory=list)  # list[InspireAuthor]
     collaborations: list = field(default_factory=list)
+    # arXiv 투고일. pub_date(실제 게재일, imprint)와 구분해 둔다 — 섞으면 게재일이
+    # 투고일로 잡혀 연도 판정이 틀린다(예: 10.1103/1b65-rblz).
+    preprint_date: Optional[str] = None
+    # issn은 인쇄판 우선(없으면 전자판), issn_online은 전자판. INSPIRE 저널 레코드의 medium 기준.
+    issn_online: Optional[str] = None
 
 
 @dataclass

@@ -6,6 +6,8 @@ import time
 
 import requests
 
+from .ack_check import find_kisti_ack_mentions, mentions_kist
+
 _ACK_RE = re.compile(r"acknowledg", re.IGNORECASE)
 _EXCERPT_WINDOW = 4000       # 키워드 앞뒤로 자를 글자 수
 _MAX_TOTAL_EXCERPT = 8000    # 파일별 발췌를 모두 합친 뒤 자를 최대 길이
@@ -30,16 +32,33 @@ class ArxivFetcher:
 
     def fetch_ack_excerpt(self, arxiv_id):
         """반환: (excerpt: str, note: str). 실패 시 excerpt=''이고 note에 사유 기록."""
+        excerpt, note, _mentions, _kist = self.fetch_ack(arxiv_id)
+        return excerpt, note
+
+    def fetch_ack(self, arxiv_id):
+        """반환: (excerpt, note, kisti_mentions, kist_mentioned).
+
+        kisti_mentions는 사사 영역 전체(발췌 길이 제한과 무관)에서 찾은
+        KISTI/GSDC 언급 문맥 목록이다. 원문을 못 구하면 None — 빈 리스트(=원문은
+        봤는데 언급 없음)와 구분하기 위함. CMS처럼 사사 문단이 길면 KISTI가
+        발췌 범위 밖에 있을 수 있어서, 발췌와 별도로 검색한다.
+        kist_mentioned는 사사에 KIST(별개 기관)가 나오는지 — funder의 KIST DOI가
+        오태깅인지 추정하는 데 쓴다.
+        """
         if not arxiv_id:
-            return "", "arxiv_id 없음"
+            return "", "arxiv_id 없음", None, False
 
         raw = self._download(arxiv_id)
         if raw is None:
-            return "", "arXiv e-print 다운로드 실패"
+            return "", "arXiv e-print 다운로드 실패", None, False
 
         tex_files = self._extract_tex_files(raw)
         if not tex_files:
-            return "", "tex 소스 없음(단일 PDF 등)"
+            return "", "tex 소스 없음(단일 PDF 등)", None, False
+
+        region = self._ack_region(tex_files)
+        mentions = find_kisti_ack_mentions(region)
+        kist = mentions_kist(region)
 
         ordered = self._order_by_hint(tex_files)
 
@@ -57,10 +76,27 @@ class ArxivFetcher:
                 break
 
         if not chunks:
-            return "", "Acknowledgements 관련 텍스트를 찾지 못함"
+            if mentions:
+                return "", "Acknowledgements 키워드는 없지만 사사 파일에서 KISTI/GSDC 언급 발견", mentions, kist
+            return "", "Acknowledgements 관련 텍스트를 찾지 못함", None, False
 
         excerpt = "\n\n---\n\n".join(chunks)[:_MAX_TOTAL_EXCERPT]
-        return excerpt, ""
+        return excerpt, "", mentions, kist
+
+    def _ack_region(self, tex_files):
+        """사사 판정에 쓸 원문 범위: 파일명이 사사 파일 힌트(예: ALICE fa_*)에
+        맞으면 파일 전체, 그 외 파일은 첫 "acknowledg" 이후 끝까지. 저자 소속에
+        KISTI가 나오는 경우(사사 아님)를 피하려고 문서 전체는 보지 않는다."""
+        parts = []
+        for name, text in tex_files:
+            lname = name.lower()
+            if any(h in lname for h in self.filename_hints):
+                parts.append(text)
+                continue
+            m = _ACK_RE.search(text)
+            if m:
+                parts.append(text[m.start():])
+        return "\n".join(parts)
 
     def _download(self, arxiv_id):
         url = self.url_template.format(arxiv_id=arxiv_id)

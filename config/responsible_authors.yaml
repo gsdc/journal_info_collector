@@ -7,8 +7,9 @@
 # orcid      : "0000-0002-XXXX-XXXX" 형식. 있으면 name보다 우선 사용됨.
 responsible_authors:
   CMS:
-    - name: ""
-      orcid: ""
+    # CMS 공식 저자 명단에는 없어 실제로는 Y가 나오지 않을 것으로 예상(2026-10-23).
+    - name: "Geonmo Ryu"
+      orcid: "0000-0002-3470-0828"
   ALICE:
     - name: "Sang Un Ahn"
       orcid: "0000-0001-8847-489X"
@@ -19,6 +20,29 @@ responsible_authors:
   "Belle II":
     - name: ""
       orcid: ""
+  # 저자로 등록된 담당자가 확인되면 ORCID와 함께 채운다. 이름만 넣으면
+  # HK/SK 등에서 동명이인("Kim, D.")과 오매칭되므로 ORCID를 함께 적는다.
+  DUNE:
+    - name: ""
+      orcid: ""
+  JSNS2:
+    - name: ""
+      orcid: ""
+  HK/SK:
+    - name: ""
+      orcid: ""
+  RENE:
+    - name: ""
+      orcid: ""
+  FCC:
+    - name: ""
+      orcid: ""
+  EIC:
+    - name: ""
+      orcid: ""
+  ENIGMA:
+    - name: "Sangwook Bae"
+      orcid: "0000-0003-2429-3357"
   LIGO:
     - name: "Sangwook Bae"
       orcid: "0000-0003-2429-3357"

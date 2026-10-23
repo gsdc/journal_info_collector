@@ -1,4 +1,6 @@
+import re
 import time
+import unicodedata
 from dataclasses import asdict
 
 import requests
@@ -27,8 +29,11 @@ class InspireClient:
         찾지 못하면 None을 반환한다."""
         if self._cache is not None:
             cached = self._cache.get("inspire_doi", doi)
-            if cached is not None:
-                return _record_from_dict(cached)
+            # preprint_date 키가 없는 옛 캐시는 게재일에 투고일이 섞였을 수 있어 다시 조회한다.
+            if cached is not None and "preprint_date" in cached and "issn_online" in cached:
+                record = _record_from_dict(cached)
+                if is_complete(record):
+                    return record
 
         url = f"{self.base_url}/doi/{doi}"
         resp = self._get(url)
@@ -38,7 +43,7 @@ class InspireClient:
         data = resp.json()
         metadata = data.get("metadata", data)
         record = self._parse_record(metadata)
-        if self._cache is not None:
+        if self._cache is not None and is_complete(record):
             self._cache.set("inspire_doi", doi, asdict(record))
         return record
 
@@ -52,8 +57,11 @@ class InspireClient:
 
         if self._cache is not None:
             cached = self._cache.get("inspire_arxiv", arxiv_id)
-            if cached is not None:
-                return _record_from_dict(cached)
+            # preprint_date 키가 없는 옛 캐시는 게재일에 투고일이 섞였을 수 있어 다시 조회한다.
+            if cached is not None and "preprint_date" in cached and "issn_online" in cached:
+                record = _record_from_dict(cached)
+                if is_complete(record):
+                    return record
 
         url = f"{self.base_url}/arxiv/{arxiv_id}"
         resp = self._get(url)
@@ -65,8 +73,8 @@ class InspireClient:
         record = self._parse_record(metadata)
         # arXiv ID로는 preprint 단계에서도(DOI 없이) 레코드가 잡히는 경우가
         # 흔하다 — DOI가 아직 없는 레코드는 다음에 실제로 출판되면 내용이
-        # 바뀌므로 캐시하지 않고, DOI가 이미 붙은(=게재 확정) 경우만 캐시한다.
-        if self._cache is not None and record.doi is not None:
+        # 바뀌므로 캐시하지 않고, 게재 정보까지 다 붙은 경우만 캐시한다.
+        if self._cache is not None and is_complete(record):
             self._cache.set("inspire_arxiv", arxiv_id, asdict(record))
         return record
 
@@ -79,7 +87,7 @@ class InspireClient:
         page = pub_info.get("artid") or pub_info.get("page_start")
 
         journal_ref = pub_info.get("journal_record", {}).get("$ref")
-        issn = self._get_journal_issn(journal_ref) if journal_ref else None
+        issn_print, issn_online = self._get_journal_issn(journal_ref) if journal_ref else (None, None)
 
         dois = metadata.get("dois") or []
         doi = dois[0].get("value") if dois else None
@@ -93,12 +101,10 @@ class InspireClient:
                 title = t.get("title")
                 break
 
-        pub_date = None
+        # 게재일은 실제 게재 정보(imprint)만 쓴다. 예전에는 없으면 preprint_date로
+        # 채웠는데, 그러면 게재일이 arXiv 투고일로 잡혀 연도가 틀릴 수 있다.
         imprints = metadata.get("imprints") or []
-        if imprints:
-            pub_date = imprints[0].get("date")
-        if not pub_date:
-            pub_date = metadata.get("preprint_date")
+        pub_date = imprints[0].get("date") if imprints else None
 
         authors = []
         for a in metadata.get("authors", []):
@@ -118,22 +124,39 @@ class InspireClient:
             journal_title=journal_title,
             journal_volume=volume,
             page=page,
-            issn=issn,
+            issn=issn_print or issn_online,
+            issn_online=issn_online,
             pub_date=pub_date,
             authors=authors,
             collaborations=collaborations,
+            preprint_date=metadata.get("preprint_date"),
         )
 
     def _get_journal_issn(self, journal_ref_url):
+        """INSPIRE 저널 레코드의 (인쇄판 ISSN, 전자판 ISSN). 없으면 None."""
         if journal_ref_url in _journal_cache:
             return _journal_cache[journal_ref_url]
 
         if self._cache is not None:
-            cached = self._cache.get("inspire_journal_issn", journal_ref_url)
+            cached = self._cache.get("inspire_journal_issns", journal_ref_url)
             if cached is not None:
-                issn = cached.get("issn")
-                _journal_cache[journal_ref_url] = issn
-                return issn
+                pair = (cached.get("print"), cached.get("online"))
+                _journal_cache[journal_ref_url] = pair
+                return pair
+
+        resp = self._get(journal_ref_url)
+        printed = online = None
+        if resp.status_code == 200:
+            for item in resp.json().get("metadata", {}).get("issns") or []:
+                if item.get("medium") == "online":
+                    online = online or item.get("value")
+                else:  # "print" 또는 medium 미기재
+                    printed = printed or item.get("value")
+        pair = (printed, online)
+        _journal_cache[journal_ref_url] = pair
+        if self._cache is not None and (printed or online):
+            self._cache.set("inspire_journal_issns", journal_ref_url, {"print": printed, "online": online})
+        return pair
 
         resp = self._get(journal_ref_url)
         issn = None
@@ -148,6 +171,56 @@ class InspireClient:
         return issn
 
 
+# 글꼴·장식용 LaTeX 명령: 의미가 없으므로 지운다(\mathrm{B} -> B).
+_LATEX_STYLE_RE = re.compile(
+    r"\\(?:mathrm|mathbf|mathit|mathcal|mathsf|boldsymbol|text|textrm|textit|textbf"
+    r"|rm|bf|it|bar|overline|hat|tilde|vec|sqrt|left|right|big|Big)(?![a-zA-Z])"
+)
+_LATEX_ARROW_RE = re.compile(r"\\(?:to|rightarrow|longrightarrow)(?![a-zA-Z])")
+
+
+def normalize_title(title):
+    """제목 비교용 정규화. 출판사(MathML·유니코드)와 arXiv(LaTeX) 표기가 달라도
+    같은 제목이면 같은 값이 되게 한다.
+
+    그리스 문자·prime·화살표·+는 이름으로 바꿔 남긴다. 지워 버리면 붕괴 채널만
+    다른 논문끼리 같은 값이 된다(실제 사례: Belle II "Observation of the decays
+    B -> Sigma_c ..." 두 논문). LaTeX \Sigma와 유니코드 Σ는 모두 "sigma"가 된다.
+    """
+    t = re.sub(r"<[^>]+>", " ", title or "")
+    t = _LATEX_STYLE_RE.sub(" ", t)
+    t = _LATEX_ARROW_RE.sub(" to ", t)
+    t = re.sub(r"\\([a-zA-Z]+)", r" \1 ", t)  # \Sigma -> Sigma, \prime -> prime
+    out = []
+    for ch in t:
+        if ch in "'′’":
+            out.append(" prime ")
+        elif ch in "→⟶":
+            out.append(" to ")
+        elif ch == "+":
+            out.append(" plus ")
+        elif ord(ch) > 127:
+            name = unicodedata.name(ch, "")
+            if name.startswith("GREEK") and "LETTER" in name:
+                out.append(" " + name.split()[-1].lower() + " ")
+            else:
+                out.append(unicodedata.normalize("NFKD", ch))
+        else:
+            out.append(ch)
+    return re.sub(r"[^a-z0-9]", "", "".join(out).lower())
+
+
+def is_complete(record):
+    """DOI·저널·권·페이지·게재일이 모두 채워졌는지. ISSN은 INSPIRE 저널
+    레코드에 원래 비어 있는 경우가 많고 settings의 fallback으로 보완하므로
+    기준에서 뺀다. 하나라도 비어 있으면 캐시하지 않고(이미 캐시된 것도
+    무시하고) 다음 실행에서 다시 조회한다."""
+    return bool(
+        record.doi and record.journal_title and record.journal_volume
+        and record.page and record.pub_date
+    )
+
+
 def _record_from_dict(d):
     authors = [InspireAuthor(**a) for a in d.get("authors", [])]
     return InspireRecord(
@@ -158,7 +231,9 @@ def _record_from_dict(d):
         journal_volume=d.get("journal_volume"),
         page=d.get("page"),
         issn=d.get("issn"),
+        issn_online=d.get("issn_online"),
         pub_date=d.get("pub_date"),
         authors=authors,
         collaborations=d.get("collaborations", []),
+        preprint_date=d.get("preprint_date"),
     )

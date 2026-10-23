@@ -47,7 +47,7 @@ def scan_computing_ack_gap(
 
     kisti_funder_doi = settings["crossref"]["kisti_funder_doi"]
 
-    cache = SqliteCache(settings.get("cache", {}).get("path", "data/cache.sqlite"))
+    cache = SqliteCache.from_settings(settings)
     crossref_client = CrossrefClient(settings, cache=cache)
     arxiv_fetcher = ArxivFetcher(settings)
 
@@ -90,8 +90,8 @@ def scan_computing_ack_gap(
             ack_funder_status, ack_funder_note = check_ack_via_funder(
                 crossref_record, kisti_funder_doi
             )
-            if ack_funder_status == "Y":
-                continue  # funder DOI/이름으로 이미 credited 확인됨
+            if ack_funder_status in ("Y", "KIST오태깅", "이름만"):
+                continue  # funder DOI/이름으로 이미 credited 확인됨(오태깅·ID 누락 포함)
 
             excerpt, excerpt_note = arxiv_fetcher.fetch_ack_excerpt(raw.arxiv_id)
             if not excerpt:

@@ -42,8 +42,10 @@ class Belle2Downloader(BaseDownloader):
                 break
 
             for row in rows:
+                self._row()
                 tds = row.find_all("td", recursive=False)
                 if len(tds) < 5:
+                    self._drop(f"컬럼 수 부족({len(tds)})", row.get_text(" ", strip=True))
                     continue
 
                 title_link = tds[0].find("a")
@@ -88,4 +90,6 @@ class Belle2Downloader(BaseDownloader):
 
             if len(rows) < 200:
                 break  # 마지막 페이지
+        else:
+            self.audit["truncated"] = True
         return results

@@ -15,6 +15,13 @@ communities:
     downloader: alice_html
     url: "https://alice-publications.web.cern.ch/publications"
     inspire_collaboration: "ALICE"
+    # DOI·arXiv 링크가 없어 수집하지 못하는 옛 문서(2000년대 TDR·성능 보고서).
+    # 최근 연도 조사와 무관하므로 누락 경고에서 뺀다.
+    audit_ignore_titles:
+      - "Upgrade of the ALICE Inner Tracking System - Technical Design Report"
+      - "The ALICE Experiment at the CERN LHC"
+      - "Physics Performance Report II"
+      - "Physics Performance Report I"
 
   - name: Belle II
     downloader: belle2_html
@@ -25,6 +32,81 @@ communities:
     downloader: ligo_html
     url: "https://pnp.ligo.org/ppcomm/Papers.html"
     inspire_collaboration: "LIGO"
+
+  # DUNE 공식 페이지(dunescience.org/publications)는 목록을 JavaScript로 그려서
+  # 직접 읽을 수 없어, INSPIRE 컬래버레이션 검색 결과를 목록으로 쓴다.
+  - name: DUNE
+    downloader: inspire_collab
+    url: "https://inspirehep.net/api/literature"
+    inspire_collaboration: "DUNE"
+
+  # 중성미자(NGNU): DUNE, JSNS2, HK/SK, RENE. 모두 공식 논문 목록 페이지를 쓸 수
+  # 없어 INSPIRE 검색을 목록으로 쓴다. collab_min_authors는 컬래버레이션 명의
+  # 논문으로 볼 최소 저자 수(기본 100) — 소규모 실험은 낮춘다.
+  - name: JSNS2
+    downloader: inspire_collab
+    url: "https://inspirehep.net/api/literature"
+    inspire_collaborations: ["JSNS2", "JSNS^2"]   # INSPIRE에 두 표기가 섞여 있음
+    collab_min_authors: 30                        # 컬래버레이션 논문 저자 50~80명
+
+  - name: HK/SK
+    downloader: inspire_collab
+    url: "https://inspirehep.net/api/literature"
+    inspire_collaborations: ["Hyper-Kamiokande", "Super-Kamiokande"]
+    # 기본 100명: 저자 1명짜리 개인 명의 논문이 섞여 있어 걸러낸다(컬래버레이션 논문 230명 이상)
+
+  - name: RENE
+    downloader: inspire_collab
+    url: "https://inspirehep.net/api/literature"
+    # Reactor Experiment for Neutrinos and Exotics. INSPIRE에 컬래버레이션 표기가
+    # 없어 제목으로 찾는다(현재 PTEP 2편).
+    inspire_query: 't RENE and t neutrino'
+    collab_min_authors: 20                        # 저자 30~40명
+
+  # FCC·EIC(ePIC): 하드웨어 개발 중심이라 공식 논문 목록이 없고, 논문 저자도
+  # 1~30명 규모가 많아 저자 수로 거르지 않는다(collab_min_authors: 1).
+  # 표기 변형이 많아 와일드카드로 검색한다. inspire_collaborations는 OpenAlex로
+  # 찾은 논문의 소속 판별용(부분 문자열 일치).
+  - name: FCC
+    downloader: inspire_collab
+    url: "https://inspirehep.net/api/literature"
+    inspire_query: 'collaboration:FCC*'           # FCC, FCC-ee, FCC-hh, FCC-eh, 검출기·설계 그룹 등
+    inspire_collaborations: ["FCC"]
+    collab_min_authors: 1
+
+  - name: EIC
+    downloader: inspire_collab
+    url: "https://inspirehep.net/api/literature"
+    # ePIC(EIC 검출기 컬래버레이션)과 하위 그룹, EIC 이름의 그룹들. ATHENA·CORE(옛 제안 그룹)는
+    # 동명의 다른 프로젝트와 섞여 넣지 않는다. 전파천문 장비 EPIC은 제외.
+    inspire_query: >-
+      (collaboration:ePIC* or collaboration:EIC* or collaboration:"Korea DRC team for the EIC"
+      or collaboration:"Trieste EIC Groups" or collaboration:"BNL EIC Science Task Force")
+      and not collaboration:"E-field Parallel Imaging Correlator"
+    inspire_collaborations: ["ePIC", "EIC"]
+    collab_min_authors: 1
+
+  # ENIGMA(East-Asian Network Initiative for Gravity Measurement Alliance):
+  # 국가수리과학연구소 주관 동아시아 초전도 중력계 관측망. 고에너지물리가 아니라
+  # INSPIRE에 없고 공식 논문 목록도 없어 OpenAlex 검색을 목록으로 쓴다.
+  # 같은 이름의 다른 컨소시엄(뇌영상 유전학, BRCA)이 있어 이름만으로 검색하지 않는다.
+  - name: ENIGMA
+    downloader: openalex_search
+    url: "https://api.openalex.org/works"
+    since_year: 2023
+    openalex_queries:
+      - search: '"East-Asian Network Initiative for Gravity Measurement Alliance"'
+      - search: "gravimeter OR gravimetry OR ENIGMA"
+        # OpenAlex 저자 ID: EGU24-3305(ENIGMA 제안 초록, doi:10.5194/egusphere-egu24-3305)
+        # 핵심 저자들과 ENIGMA 담당자. OpenAlex가 한 사람을 여러 ID로 나눠 둔 경우가
+        # 있어 담당자는 두 ID를 모두 넣었다(ORCID 연결된 주 레코드 + 분리 레코드).
+        authors:
+          - A5031297900
+          - A5016745320
+          - A5111142966
+          - A5032703423
+          - A5100608577       # ENIGMA 담당자(responsible_authors.yaml), 주 레코드
+          - A5101314706       # ENIGMA 담당자, OpenAlex 분리 레코드
 
   # 추가 커뮤니티는 아래처럼 등록하고, src/downloaders/ 에 맞는 다운로더를 구현하면 됨.
   # - name: KIAF

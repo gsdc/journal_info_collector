@@ -14,3 +14,9 @@ output/
 
 # OS
 .DS_Store
+
+# 공개 저장소에 올리지 않는 로컬 메모(인원 관련 등)
+config/*.local.yaml
+
+# Clarivate JCR 데이터(IF·상위%)는 라이선스상 공개 배포가 제한될 수 있어 로컬에만 둔다.
+config/journals_*.tsv

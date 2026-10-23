@@ -37,10 +37,12 @@ class CmsDownloader(BaseDownloader):
         reader = csv.DictReader(io.StringIO(resp.text))
         results = []
         for row in reader:
+            self._row()
             doi = (row.get("DOI") or "").strip() or None
             reference = (row.get("Reference") or "").strip() or None
             status = _status_from_reference(doi, reference)
             if status == "superseded":
+                self._drop("superseded(철회/대체)", row.get("Title"), expected=True)
                 continue  # 철회/다른 분석노트로 대체됨 - 애초에 논문이 아님
 
             arxiv_id = (row.get("arXiv") or "").strip() or None

@@ -24,12 +24,15 @@ class LigoDownloader(BaseDownloader):
         soup = BeautifulSoup(resp.text, "lxml")
         tbody = soup.find("tbody", id="Table")
         if tbody is None:
+            self._drop("논문 테이블(tbody#Table)을 찾지 못함 - 페이지 구조 변경 의심")
             return []
 
         results = []
         for row in tbody.find_all("tr", recursive=False):
+            self._row()
             tds = row.find_all("td", recursive=False)
             if len(tds) < 6:
+                self._drop(f"컬럼 수 부족({len(tds)})", row.get_text(" ", strip=True))
                 continue
 
             title_b = tds[1].find("b")
@@ -54,7 +57,10 @@ class LigoDownloader(BaseDownloader):
             arxiv_link = tds[5].find("a")
             arxiv_id = arxiv_link.get_text(strip=True) if arxiv_link else None
 
-            pub_date_raw = tds[0].get_text(" ", strip=True).replace("*Recent*", "").strip()
+            # 첫 컬럼(Release Date)은 저널 게재일이 아니라 arXiv 공개일이다. 2025년에
+            # 공개되고 2026년에 게재된 논문이 연도 필터에서 빠지지 않도록 투고일로
+            # 다루고, 실제 게재일은 파이프라인이 CrossRef/INSPIRE로 판단한다.
+            release_date = tds[0].get_text(" ", strip=True).replace("*Recent*", "").strip()
 
             results.append(
                 RawPublication(
@@ -63,7 +69,7 @@ class LigoDownloader(BaseDownloader):
                     arxiv_id=arxiv_id,
                     doi=doi,
                     journal_citation_raw=journal_citation_raw or None,
-                    pub_date_raw=pub_date_raw or None,
+                    submitted_date_raw=release_date or None,
                     status=status,
                     source_url=self.url,
                 )

@@ -27,19 +27,40 @@ arxiv:
 output:
   csv_path: "output/journal_report.csv"
   candidates_path: "data/candidates.json"
+  audit_path: "data/download_audit.json"        # 커뮤니티 페이지별 수집/제외 기록
+  reconcile_path: "output/reconcile_report.md"  # 커뮤니티·INSPIRE·OpenAlex 대조 보고서
   encoding: "utf-8-sig"   # 엑셀에서 한글 깨짐 방지
+
+# OpenAlex: 대조 보고서(python main.py reconcile)에서 KISTI 관련 논문을 찾는 데 사용.
+# API 키 없이도 되지만, 같은 IP 전체가 하루 소량의 무료 한도를 나눠 쓰므로
+# 정기 실행 시에는 무료 키를 발급받아 환경변수(OPENALEX_API_KEY)로 지정하는 것을 권장.
+openalex:
+  base_url: "https://api.openalex.org"
+  kisti_funder_id: "F4320322105"       # Korea Institute of Science and Technology Information
+  kisti_institution_id: "I878022262"   # 같은 기관(ROR 01k4yrm29)
+  api_key_env: "OPENALEX_API_KEY"
+  max_pages: 5                          # 필터당 최대 페이지(200건/페이지)
 
 # DOI/arXiv ID로 조회한 INSPIRE-HEP·CrossRef 응답을 재사용하기 위한 로컬 캐시.
 # 이미 출판이 확정된 레코드만 캐시하며(못 찾은 결과는 캐시하지 않음 - 아직
 # 미출판인 논문은 매번 다시 조회해서 '숨은 출판'을 잡아내야 하기 때문),
+# 권·페이지·게재일 등 핵심 서지 정보가 하나라도 비어 있는 레코드도 캐시하지
+# 않는다(다음 실행에서 다시 조회해 채워 넣기 위함).
 # data/ 아래에 두므로 .gitignore로 제외된다.
 cache:
   path: "data/cache.sqlite"
+  # 이 일수보다 오래된 캐시는 다시 조회한다(출판사 메타데이터 사후 수정 반영).
+  ttl_days: 30
 
 # 알려진 저널의 ISSN (INSPIRE 저널 레코드에 ISSN이 비어있을 때의 대체값)
-# 필요할 때마다 채워나가면 됨. 키는 INSPIRE short_title 기준.
+# 필요할 때마다 채워나가면 됨. 키는 INSPIRE short_title이지만, 파이프라인은 값의 ISSN으로도
+# 찾는다(CrossRef 저널명 표기가 달라도 매칭됨). 전자판으로 출판돼도 인쇄판을 우선 기입하며,
+# CrossRef·INSPIRE가 인쇄판을 모르는 저널(예: Eur.Phys.J.C)은 여기 값으로 인쇄판을 채운다.
 # 값 형식: "print_ISSN,EISSN" (electronic-only 저널은 별도 print ISSN이 없어 단일 값만 기재)
 journal_issn_fallback:
+  "J.Phys.G": "0954-3899,1361-6471"
+  "Eur.Phys.J.Plus": "2190-5444"         # 전자판 전용
+  "Instruments": "2410-390X"             # MDPI, 전자판 전용
   "Phys.Rev.D": "2470-0010,2470-0029"
   "Phys.Rev.Lett.": "0031-9007,1079-7114"
   "Phys.Rev.C": "2469-9985,2469-9993"
