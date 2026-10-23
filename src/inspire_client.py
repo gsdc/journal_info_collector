@@ -78,6 +78,39 @@ class InspireClient:
             self._cache.set("inspire_arxiv", arxiv_id, asdict(record))
         return record
 
+    def find_by_exact_title(self, title):
+        """정규화한 제목이 정확히 같은 INSPIRE 레코드를 찾는다. 하나일 때만 반환
+        (원본의 arXiv/DOI가 잘못된 경우 올바른 레코드를 찾기 위함)."""
+        key = normalize_title(title)
+        # 검색어는 수식($...$)을 뺀 일반 단어만(수식은 표기가 제각각이라 검색을 망친다)
+        plain = re.sub(r"\$[^$]*\$", " ", title or "")
+        # 숫자는 뺀다("5.36"이 "5"·"36"으로 쪼개지면 INSPIRE에서 안 맞는다)
+        words = [
+            w for w in re.sub(r"\\[a-zA-Z]+|<[^>]+>|[^A-Za-z0-9 ]", " ", plain).split()
+            if len(w) > 1 and not w.isdigit()
+        ]
+        if not key or len(words) < 3:
+            return None
+        resp = self._get(
+            f"{self.base_url}/literature",
+            params={"q": "t " + " ".join(words[:15]), "size": 25,
+                    "fields": "titles,dois,arxiv_eprints"},
+        )
+        if resp.status_code != 200:
+            return None
+        found = []
+        for hit in resp.json()["hits"]["hits"]:
+            md = hit.get("metadata", {})
+            if any(normalize_title(t.get("title")) == key for t in md.get("titles") or []):
+                found.append(md)
+        if len(found) != 1:
+            return None
+        md = found[0]
+        return {
+            "arxiv_id": ((md.get("arxiv_eprints") or [{}])[0]).get("value"),
+            "doi": ((md.get("dois") or [{}])[0]).get("value"),
+        }
+
     def _parse_record(self, metadata):
         pub_info_list = metadata.get("publication_info") or [{}]
         pub_info = next((p for p in pub_info_list if p.get("journal_title")), pub_info_list[0])
@@ -174,7 +207,8 @@ class InspireClient:
 # 글꼴·장식용 LaTeX 명령: 의미가 없으므로 지운다(\mathrm{B} -> B).
 _LATEX_STYLE_RE = re.compile(
     r"\\(?:mathrm|mathbf|mathit|mathcal|mathsf|boldsymbol|text|textrm|textit|textbf"
-    r"|rm|bf|it|bar|overline|hat|tilde|vec|sqrt|left|right|big|Big)(?![a-zA-Z])"
+    r"|rm|bf|it|bar|overline|hat|tilde|vec|sqrt|smash|left|right|big|Big)(?![a-zA-Z])"
+    r"(?:\[[^\]]*\])?"  # \smash[b]{...}처럼 붙는 선택 인자도 함께 지운다
 )
 _LATEX_ARROW_RE = re.compile(r"\\(?:to|rightarrow|longrightarrow)(?![a-zA-Z])")
 

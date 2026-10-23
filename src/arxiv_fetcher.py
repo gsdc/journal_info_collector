@@ -9,6 +9,23 @@ import requests
 from .ack_check import find_kisti_ack_mentions, mentions_kist
 
 _ACK_RE = re.compile(r"acknowledg", re.IGNORECASE)
+# 지원 기관을 밝히는 문단의 표지. Belle II처럼 "…was supported by …" 지원 문단이
+# "Acknowledgements" 단어보다 앞에 오는 논문이 있어(실제 사례: arXiv:2510.01331,
+# GSDC·KISTI가 이 문단에만 있음) 이런 문단도 사사 영역에 넣는다.
+_FUNDING_PARA_RE = re.compile(
+    r"acknowledg|supported\s+(?:in\s+part\s+)?by|support\s+(?:of|from)|funded\s+by|funding"
+    r"|we\s+(?:gratefully\s+)?thank|grants?\b",
+    re.IGNORECASE,
+)
+# 저자 소속·매크로 정의 줄. 소속 목록에 KISTI가 있어도 사사가 아니므로, 지원 문구
+# 주변을 볼 때는 이런 줄을 먼저 지운다(DUNE처럼 소속 목록이 빈 줄 없이 한 덩어리라
+# 그 안의 "grant" 등에 걸려 소속 전체가 사사로 잡히는 오탐 방지).
+_AFFILIATION_LINE_RE = re.compile(
+    r"^.*\\(?:affiliation|altaffiliation|address|institute|author|affil|inst"
+    r"|newcommand|renewcommand|providecommand|def)\b.*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_FUNDING_WINDOW = (300, 4000)  # 지원 문구 앞뒤로 볼 글자 수
 _EXCERPT_WINDOW = 4000       # 키워드 앞뒤로 자를 글자 수
 _MAX_TOTAL_EXCERPT = 8000    # 파일별 발췌를 모두 합친 뒤 자를 최대 길이
 
@@ -84,9 +101,12 @@ class ArxivFetcher:
         return excerpt, "", mentions, kist
 
     def _ack_region(self, tex_files):
-        """사사 판정에 쓸 원문 범위: 파일명이 사사 파일 힌트(예: ALICE fa_*)에
-        맞으면 파일 전체, 그 외 파일은 첫 "acknowledg" 이후 끝까지. 저자 소속에
-        KISTI가 나오는 경우(사사 아님)를 피하려고 문서 전체는 보지 않는다."""
+        """사사 판정에 쓸 원문 범위:
+        - 파일명이 사사 파일 힌트(예: ALICE fa_*)에 맞으면 파일 전체
+        - 그 외 파일은 첫 "acknowledg" 이후 끝까지, 그리고 그보다 앞에 있더라도
+          지원·감사 문구(supported by, funding, grant, we thank …) 주변
+        저자 소속에 KISTI가 나오는 경우(사사 아님)를 피하려고 문서 전체는 보지 않고,
+        지원 문구 주변을 볼 때도 소속·매크로 정의 줄은 지운다."""
         parts = []
         for name, text in tex_files:
             lname = name.lower()
@@ -94,6 +114,10 @@ class ArxivFetcher:
                 parts.append(text)
                 continue
             m = _ACK_RE.search(text)
+            head = _AFFILIATION_LINE_RE.sub("", text[: m.start()] if m else text)
+            before, after = _FUNDING_WINDOW
+            for fm in _FUNDING_PARA_RE.finditer(head):
+                parts.append(head[max(0, fm.start() - before): fm.start() + after])
             if m:
                 parts.append(text[m.start():])
         return "\n".join(parts)

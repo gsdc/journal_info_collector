@@ -90,6 +90,13 @@ OpenAlex 제목 검색으로 출판본을 찾은 경우다. 커뮤니티 페이�
   확인이 안 된 것 — **CSV에서 제외**하고, 최종 요약에 "이번 리포트 제외(미출판)"
   목록으로 커뮤니티/제목/상태를 알려준다. 다음 fetch 때 다시 확인하면 된다.
 
+# 참고용 커뮤니티 분리
+
+`candidate.reference_only`가 true인 논문(현재 DUNE, JSNS2, HK/SK, RENE, FCC, EIC,
+ENIGMA — `config/communities.yaml`의 `reference_only: true`)은 논문이 얼마나 나오는지
+보는 참고 자료다. 판정 대상(현재 CMS, ALICE, Belle II, LIGO)과 같은 방식으로 행을
+만들되, **최종 보고서와 유발논문 집계에서 빼고** 별도 CSV로 낸다.
+
 # 절차
 
 1. `data/candidates.json`을 읽는다. 없으면 사용자에게 먼저
@@ -101,7 +108,9 @@ OpenAlex 제목 검색으로 출판본을 찾은 경우다. 커뮤니티 페이�
 4. `match_status`가 "inspire_not_found"인 항목은 INSPIRE/CrossRef 정보가
    비어 있을 수 있음 — journal/issn/volume/page/date가 빈 값이면 note로 남기고
    그대로 진행한다(억지로 채우지 않는다).
-5. 아래 스키마의 dict 리스트를 만들어 `data/final_rows.json`에 저장한다
+5. 아래 스키마의 dict 리스트를 만든다. 판정 대상 논문(`reference_only`가 false)은
+   `data/final_rows.json`에, 참고용 커뮤니티 논문(`reference_only`가 true)은
+   `data/final_rows_reference.json`에 저장한다
    (No.는 나중에 csv_writer가 다시 매기므로 생략 가능):
 
    ```json
@@ -133,9 +142,12 @@ OpenAlex 제목 검색으로 출판본을 찾은 경우다. 커뮤니티 페이�
 
    ```
    python -m src.csv_writer data/final_rows.json output/journal_report.csv
+   python -m src.csv_writer data/final_rows_reference.json output/journal_report_reference.csv
    ```
 
-7. 사용자에게 다음을 요약해서 보고한다:
+7. 사용자에게 다음을 요약해서 보고한다. 아래 항목(유발논문 집계, 근거 엇갈림,
+   Funder 수정요청 등)은 **판정 대상 커뮤니티만** 대상으로 하고, 참고용 커뮤니티는
+   맨 끝에 커뮤니티별 출판 논문 수(와 SCIE 논문 수)만 따로 보여준다:
    - 총 몇 건 처리했는지, 커뮤니티별 건수
    - 미출판이라 이번 CSV에서 제외한 논문 수와 목록(커뮤니티/제목/상태)
    - 근거별 건수: 저자 Y / 사사 Y / Funder Y, 그리고 하나라도 Y인 유발 논문 수와
@@ -149,3 +161,4 @@ OpenAlex 제목 검색으로 출판본을 찾은 경우다. 커뮤니티 페이�
    - `Funder 수정요청`이 있는 논문 목록(KIST 오태깅 / KIST 확인필요 / ID 누락별로)
    - Auth가 "확인필요"/"확인불가"인 건수와 목록 (사람이 다시 봐야 함)
    - 4번 단계에서 발견한 정보 불일치 경고
+   - (참고용) 커뮤니티별 출판 논문 수·SCIE 논문 수 — `journal_report_reference.csv`

@@ -1,3 +1,4 @@
+import difflib
 import hashlib
 import json
 import sys
@@ -99,6 +100,56 @@ def _resolve_pub_date(inspire_record, crossref_record, raw):
     return raw.pub_date_raw or ""
 
 
+def _title_similarity(a, b):
+    return difflib.SequenceMatcher(None, normalize_title(a), normalize_title(b)).ratio()
+
+
+def _fix_shared_ids(raw_pubs, name, inspire_client):
+    """같은 커뮤니티 안에서 서로 다른 행이 같은 arXiv ID(또는 DOI)를 갖고 있으면
+    원본 입력 오류다(실제 사례: CMS CSV의 HIN-25-010과 SUS-21-005가 모두
+    arXiv:2606.09567 — 실제로는 SUS 논문 번호, HIN은 2606.02285).
+    INSPIRE 레코드 제목과 가장 비슷한 행만 그 ID를 쓰고, 나머지는 정규화 제목이
+    정확히 같은 INSPIRE 레코드로 ID를 고친다. 못 찾으면 ID를 비우고 메모를 남긴다.
+    (제목만 다르다고 고치지는 않는다 — Belle II 등은 원본 제목이 내부 메모 제목이라
+    저널 제목과 원래 많이 다르다.)"""
+    for attr in ("arxiv_id", "doi"):
+        groups = {}
+        for raw in raw_pubs:
+            value = getattr(raw, attr)
+            if value:
+                groups.setdefault(value.lower(), []).append(raw)
+        for value, rows in groups.items():
+            if len(rows) < 2:
+                continue
+            try:
+                record = (
+                    inspire_client.get_by_arxiv(rows[0].arxiv_id) if attr == "arxiv_id"
+                    else inspire_client.get_by_doi(rows[0].doi)
+                )
+            except Exception:  # noqa: BLE001
+                record = None
+            ref_title = record.title if record else None
+            rows.sort(key=lambda r: _title_similarity(r.title, ref_title) if ref_title else 0, reverse=True)
+            for raw in rows[1:]:
+                found = None
+                try:
+                    found = inspire_client.find_by_exact_title(raw.title)
+                except Exception:  # noqa: BLE001
+                    pass
+                new_value = (found or {}).get(attr)
+                if new_value and new_value.lower() != value:
+                    setattr(raw, attr, new_value)
+                    if attr == "arxiv_id" and found.get("doi") and not raw.doi:
+                        raw.doi = found["doi"]
+                    raw.source_note = (
+                        f"원본 {attr}({value})가 다른 논문과 겹쳐 제목으로 찾은 {new_value}로 고침"
+                    )
+                else:
+                    setattr(raw, attr, None)
+                    raw.source_note = f"원본 {attr}({value})가 다른 논문과 겹침(입력 오류 의심) - 무시"
+                print(f"[fetch] WARN {name}: {raw.source_note}: {raw.title[:70]}", file=sys.stderr)
+
+
 def _drop_impossible_pub_date(raw):
     """원본 페이지의 게재일이 투고일보다 이르면 입력 오류로 보고 버린다
     (실제 사례: CMS CSV의 EXO-25-007이 투고 2026-04-07인데 게재 2016-06-24).
@@ -138,7 +189,7 @@ def _submitted_recently(raw, year):
 
 
 # 판정 로직이 바뀌면 올린다 — 저장된 확정 결과 중 버전이 다른 것은 다시 판정한다.
-EVIDENCE_VERSION = 5
+EVIDENCE_VERSION = 6
 
 
 def _evidence_keys(doi, arxiv_id):
@@ -407,6 +458,7 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
         audits.append(_summarize_audit(name, downloader, len(raw_pubs)))
         for raw in raw_pubs:
             _drop_impossible_pub_date(raw)
+        _fix_shared_ids(raw_pubs, name, inspire_client)
 
         query = collab_query(community_cfg)
         collab_records = []
@@ -601,7 +653,7 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
                     "ack_excerpt": ack_excerpt,
                     "ack_note": ack_note,
                     "match_status": match_status,
-                    "note": note,
+                    "note": " / ".join(n for n in (raw.source_note, note) if n),
                     "origin": raw.origin,
                 }
             )
@@ -618,6 +670,17 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
 
     # 게재일이 오늘 이후(권호 발행 예정 등)인 논문은 원래 조사 대상이 아니지만
     # 빼지 않고 표시만 한다. 실행 날짜에 따라 달라지므로 확정 판정과 별도로 매번 계산.
+    # 같은 커뮤니티 안에서 같은 DOI가 두 번 나오면(원본 중복 행 등) 하나만 남긴다.
+    seen, deduped = set(), []
+    for c in candidates:
+        key = (c["community"], (c.get("doi") or "").lower())
+        if c.get("doi") and key in seen:
+            print(f"[fetch] WARN {c['community']}: DOI 중복 행 제외 - {c['doi']}", file=sys.stderr)
+            continue
+        seen.add(key)
+        deduped.append(c)
+    candidates = deduped
+
     today = date.today()
     cfg_by_name = {c["name"]: c for c in communities}
     # SCIE 여부·JIF·상위%는 사람이 갱신하는 JCR 표에서 매번 다시 채운다(확정 판정과 별개).
@@ -631,6 +694,8 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
         d = parse_date(c.get("date"))
         c["pub_date_future"] = bool(d and d > today)
         c["source_label"] = _source_label(c, cfg_by_name.get(c["community"], {}), openalex_dois)
+        # 참고용 커뮤니티(유발논문 판정 대상 아님)는 최종 보고서에서 따로 낸다.
+        c["reference_only"] = bool(cfg_by_name.get(c["community"], {}).get("reference_only"))
 
     audit_path = settings["output"].get("audit_path", "data/download_audit.json")
     with open(audit_path, "w", encoding="utf-8") as f:

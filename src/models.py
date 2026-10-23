@@ -27,6 +27,8 @@ class RawPublication:
     # 이 논문을 어디서 찾았는지: "community"(커뮤니티 공식 목록) /
     # "inspire"(INSPIRE 컬래버레이션 출판 목록으로 보충) / "openalex"(OpenAlex KISTI 검색으로만 발견)
     origin: str = "community"
+    # 원본 데이터 문제를 고쳤거나 의심될 때 남기는 메모(후보의 note에 붙는다)
+    source_note: str = ""
 
 
 @dataclass
