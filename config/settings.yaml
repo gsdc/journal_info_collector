@@ -29,6 +29,13 @@ output:
   candidates_path: "data/candidates.json"
   encoding: "utf-8-sig"   # 엑셀에서 한글 깨짐 방지
 
+# DOI/arXiv ID로 조회한 INSPIRE-HEP·CrossRef 응답을 재사용하기 위한 로컬 캐시.
+# 이미 출판이 확정된 레코드만 캐시하며(못 찾은 결과는 캐시하지 않음 - 아직
+# 미출판인 논문은 매번 다시 조회해서 '숨은 출판'을 잡아내야 하기 때문),
+# data/ 아래에 두므로 .gitignore로 제외된다.
+cache:
+  path: "data/cache.sqlite"
+
 # 알려진 저널의 ISSN (INSPIRE 저널 레코드에 ISSN이 비어있을 때의 대체값)
 # 필요할 때마다 채워나가면 됨. 키는 INSPIRE short_title 기준.
 # 값 형식: "print_ISSN,EISSN" (electronic-only 저널은 별도 print ISSN이 없어 단일 값만 기재)

@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from . import config
 from .ack_check import check_ack_via_funder
 from .arxiv_fetcher import ArxivFetcher
+from .cache import SqliteCache
 from .crossref_client import CrossrefClient
 from .date_filter import in_range
 from .downloaders.registry import get_downloader
@@ -46,7 +47,8 @@ def scan_computing_ack_gap(
 
     kisti_funder_doi = settings["crossref"]["kisti_funder_doi"]
 
-    crossref_client = CrossrefClient(settings)
+    cache = SqliteCache(settings.get("cache", {}).get("path", "data/cache.sqlite"))
+    crossref_client = CrossrefClient(settings, cache=cache)
     arxiv_fetcher = ArxivFetcher(settings)
 
     flagged = []
@@ -122,4 +124,5 @@ def scan_computing_ack_gap(
         f"no-text {len(skipped_no_text)}",
         file=sys.stderr,
     )
+    cache.close()
     return flagged, skipped_no_text, checked

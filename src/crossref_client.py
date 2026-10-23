@@ -1,5 +1,5 @@
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Optional
 
 import requests
@@ -31,21 +31,30 @@ class CrossrefClient:
     INSPIRE-HEP 저자 레코드에는 ORCID가 비어있는 경우가 있어, CrossRef 값과 합쳐서 쓴다.
     """
 
-    def __init__(self, settings=None):
+    def __init__(self, settings=None, cache=None):
         cfg = (settings or {}).get("crossref", {})
         self.base_url = cfg.get("base_url", "https://api.crossref.org/works").rstrip("/")
         self.delay = cfg.get("request_delay_sec", 1.0)
         self.timeout = cfg.get("timeout_sec", 30)
         self._session = requests.Session()
+        self._cache = cache  # SqliteCache 또는 None (DOI로 찾은 레코드 재사용용)
 
     def get_by_doi(self, doi):
+        if self._cache is not None:
+            cached = self._cache.get("crossref_doi", doi)
+            if cached is not None:
+                return _record_from_dict(cached)
+
         url = f"{self.base_url}/{doi}"
         resp = self._session.get(url, timeout=self.timeout)
         time.sleep(self.delay)
         if resp.status_code != 200:
             return None
         message = resp.json().get("message", {})
-        return self._parse(message)
+        record = self._parse(message)
+        if self._cache is not None:
+            self._cache.set("crossref_doi", doi, asdict(record))
+        return record
 
     def _parse(self, message):
         issn_list = message.get("ISSN") or []
@@ -86,3 +95,17 @@ class CrossrefClient:
             funder_dois=funder_dois,
             funder_names=funder_names,
         )
+
+
+def _record_from_dict(d):
+    authors = [CrossrefAuthor(**a) for a in d.get("authors", [])]
+    return CrossrefRecord(
+        issn_list=d.get("issn_list", []),
+        volume=d.get("volume"),
+        page=d.get("page"),
+        pub_date=d.get("pub_date"),
+        journal_title=d.get("journal_title"),
+        authors=authors,
+        funder_dois=d.get("funder_dois", []),
+        funder_names=d.get("funder_names", []),
+    )

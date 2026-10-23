@@ -1,4 +1,5 @@
 import time
+from dataclasses import asdict
 
 import requests
 
@@ -8,12 +9,13 @@ _journal_cache = {}
 
 
 class InspireClient:
-    def __init__(self, settings):
+    def __init__(self, settings, cache=None):
         cfg = settings["inspire"]
         self.base_url = cfg["base_url"].rstrip("/")
         self.delay = cfg.get("request_delay_sec", 1.0)
         self.timeout = cfg.get("timeout_sec", 30)
         self._session = requests.Session()
+        self._cache = cache  # SqliteCache 또는 None (DOI/arXiv ID로 찾은 레코드 재사용용)
 
     def _get(self, url, **kwargs):
         resp = self._session.get(url, timeout=self.timeout, **kwargs)
@@ -23,6 +25,11 @@ class InspireClient:
     def get_by_doi(self, doi):
         """DOI로 INSPIRE-HEP literature 레코드를 조회한다.
         찾지 못하면 None을 반환한다."""
+        if self._cache is not None:
+            cached = self._cache.get("inspire_doi", doi)
+            if cached is not None:
+                return _record_from_dict(cached)
+
         url = f"{self.base_url}/doi/{doi}"
         resp = self._get(url)
         if resp.status_code == 404:
@@ -30,7 +37,10 @@ class InspireClient:
         resp.raise_for_status()
         data = resp.json()
         metadata = data.get("metadata", data)
-        return self._parse_record(metadata)
+        record = self._parse_record(metadata)
+        if self._cache is not None:
+            self._cache.set("inspire_doi", doi, asdict(record))
+        return record
 
     def get_by_arxiv(self, arxiv_id):
         """arXiv ID로 조회. 최근 논문은 출판사에서 DOI가 막 발급돼도
@@ -39,6 +49,12 @@ class InspireClient:
         (매칭 기준 자체는 여전히 다운로드 원본의 DOI다.)"""
         if not arxiv_id:
             return None
+
+        if self._cache is not None:
+            cached = self._cache.get("inspire_arxiv", arxiv_id)
+            if cached is not None:
+                return _record_from_dict(cached)
+
         url = f"{self.base_url}/arxiv/{arxiv_id}"
         resp = self._get(url)
         if resp.status_code == 404:
@@ -46,7 +62,13 @@ class InspireClient:
         resp.raise_for_status()
         data = resp.json()
         metadata = data.get("metadata", data)
-        return self._parse_record(metadata)
+        record = self._parse_record(metadata)
+        # arXiv ID로는 preprint 단계에서도(DOI 없이) 레코드가 잡히는 경우가
+        # 흔하다 — DOI가 아직 없는 레코드는 다음에 실제로 출판되면 내용이
+        # 바뀌므로 캐시하지 않고, DOI가 이미 붙은(=게재 확정) 경우만 캐시한다.
+        if self._cache is not None and record.doi is not None:
+            self._cache.set("inspire_arxiv", arxiv_id, asdict(record))
+        return record
 
     def _parse_record(self, metadata):
         pub_info_list = metadata.get("publication_info") or [{}]
@@ -105,6 +127,14 @@ class InspireClient:
     def _get_journal_issn(self, journal_ref_url):
         if journal_ref_url in _journal_cache:
             return _journal_cache[journal_ref_url]
+
+        if self._cache is not None:
+            cached = self._cache.get("inspire_journal_issn", journal_ref_url)
+            if cached is not None:
+                issn = cached.get("issn")
+                _journal_cache[journal_ref_url] = issn
+                return issn
+
         resp = self._get(journal_ref_url)
         issn = None
         if resp.status_code == 200:
@@ -113,4 +143,22 @@ class InspireClient:
             if issns:
                 issn = issns[0].get("value")
         _journal_cache[journal_ref_url] = issn
+        if self._cache is not None and issn is not None:
+            self._cache.set("inspire_journal_issn", journal_ref_url, {"issn": issn})
         return issn
+
+
+def _record_from_dict(d):
+    authors = [InspireAuthor(**a) for a in d.get("authors", [])]
+    return InspireRecord(
+        control_number=d.get("control_number"),
+        title=d.get("title"),
+        doi=d.get("doi"),
+        journal_title=d.get("journal_title"),
+        journal_volume=d.get("journal_volume"),
+        page=d.get("page"),
+        issn=d.get("issn"),
+        pub_date=d.get("pub_date"),
+        authors=authors,
+        collaborations=d.get("collaborations", []),
+    )

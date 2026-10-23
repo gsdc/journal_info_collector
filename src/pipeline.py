@@ -5,6 +5,7 @@ from . import config
 from .ack_check import check_ack_via_funder
 from .auth_check import check_auth
 from .arxiv_fetcher import ArxivFetcher
+from .cache import SqliteCache
 from .crossref_client import CrossrefClient
 from .date_filter import in_range
 from .downloaders.registry import get_downloader
@@ -26,6 +27,29 @@ def _resolve_issn(inspire_record, crossref_record, settings):
             issn, _, eissn = fallback_map[journal].partition(",")
             return issn.strip() or eissn.strip()
     return ""
+
+
+def _resolve_pub_date(inspire_record, crossref_record, raw):
+    """게재일은 CrossRef(DOI 기준 조회)가 가장 정확하므로 우선 사용하고,
+    CrossRef에 없으면 INSPIRE, 그 다음 커뮤니티 원본 페이지 값 순으로 대체한다."""
+    return (
+        (crossref_record.pub_date if crossref_record else None)
+        or (inspire_record.pub_date if inspire_record else None)
+        or raw.pub_date_raw
+        or ""
+    )
+
+
+def _needs_deferred_date_filter(raw):
+    """커뮤니티 페이지에 실제 게재일이 없는 경우(pub_date_raw 없음) — DOI가
+    이미 있는 경우(예: Belle II는 게재일 컬럼 자체가 없어 항상 이렇다)뿐 아니라,
+    DOI가 아직 없어도(원본 페이지엔 "accepted"로만 보이는 경우) arXiv ID로
+    INSPIRE를 재조회하면 이미 게재 확정(DOI 발급)된 걸 발견하는 경우가 흔하다
+    (`_resolve_inspire_record`의 '숨은 출판' 탐지와 같은 이유). 제출일과 실제
+    게재일 사이에 연도가 바뀌는 일이 잦아서, 조회할 단서(DOI 또는 arXiv ID)가
+    있으면 지금 연도로 걸러내지 않고 CrossRef/INSPIRE 조회 결과로 다시
+    판단한다. 조회할 단서가 전혀 없으면(둘 다 없음) 거를 수밖에 없다."""
+    return not raw.pub_date_raw and bool(raw.doi or raw.arxiv_id)
 
 
 def _resolve_inspire_record(inspire_client, doi, arxiv_id):
@@ -77,8 +101,9 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
     if community_names:
         communities = [c for c in communities if c["name"] in community_names]
 
-    inspire_client = InspireClient(settings)
-    crossref_client = CrossrefClient(settings)
+    cache = SqliteCache(settings.get("cache", {}).get("path", "data/cache.sqlite"))
+    inspire_client = InspireClient(settings, cache=cache)
+    crossref_client = CrossrefClient(settings, cache=cache)
     arxiv_fetcher = ArxivFetcher(settings)
     kisti_funder_doi = settings["crossref"]["kisti_funder_doi"]
 
@@ -89,11 +114,15 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
         downloader = get_downloader(community_cfg)
         raw_pubs = downloader.fetch()
 
-        raw_pubs = [
+        deferred = [raw for raw in raw_pubs if _needs_deferred_date_filter(raw)]
+        deferred_ids = {id(raw) for raw in deferred}
+        immediate = [
             raw
             for raw in raw_pubs
-            if in_range(raw.pub_date_raw or raw.submitted_date_raw, year=year)
+            if id(raw) not in deferred_ids
+            and in_range(raw.pub_date_raw or raw.submitted_date_raw, year=year)
         ]
+        raw_pubs = immediate + deferred
 
         if limit_per_community:
             raw_pubs = raw_pubs[:limit_per_community]
@@ -118,6 +147,10 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
                     crossref_record = crossref_client.get_by_doi(effective_doi)
                 except Exception as e:  # noqa: BLE001
                     note = (note + f" / CrossRef 조회 오류: {e}").strip(" /")
+
+            resolved_date = _resolve_pub_date(inspire_record, crossref_record, raw)
+            if id(raw) in deferred_ids and year is not None and not in_range(resolved_date, year=year):
+                continue  # 실제(CrossRef 기준) 게재일로 보면 요청한 연도가 아님
 
             inspire_authors = inspire_record.authors if inspire_record else []
             crossref_authors = crossref_record.authors if crossref_record else []
@@ -165,12 +198,7 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
                         or (crossref_record.page if crossref_record else None)
                         or ""
                     ),
-                    "date": (
-                        (inspire_record.pub_date if inspire_record else None)
-                        or (crossref_record.pub_date if crossref_record else None)
-                        or raw.pub_date_raw
-                        or ""
-                    ),
+                    "date": resolved_date,
                     "collaborations": inspire_record.collaborations if inspire_record else [],
                     "auth_status": auth_status,
                     "auth_note": auth_note,
@@ -183,6 +211,7 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
                 }
             )
 
+    cache.close()
     return candidates, settings
 
 
