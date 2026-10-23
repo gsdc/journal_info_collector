@@ -2,7 +2,8 @@
 
 JCR은 Clarivate 유료 데이터라 자동으로 받지 않고, 사람이 정리한
 config/journals_<연도>.tsv(탭 구분)를 읽는다. 필요한 헤더:
-  ISSN, IF, Top %   (선택: eISSN, SCIE, 저널명, JCR 정식명, 조사일자)
+  ISSN, IF, Top %   (선택: eISSN, SCIE(Y/N), 저널명, JCR 정식명, 조사일자)
+SCIE 칸은 헤더가 "SCIE"로 시작하면 된다("SCIE", "SCIE(Y/N)" 등).
 SCIE 칸이 없으면 표에 있는 저널은 SCIE로 본다. JCR에는 ESCI 저널도 JIF와 함께
 실리므로, 표에 ESCI 저널이 섞일 수 있으면 SCIE 칸(Y/N)을 넣어 구분한다.
 """
@@ -24,10 +25,11 @@ def load_jcr_table(year):
         reader = csv.DictReader((line for line in f if not line.startswith("#")), delimiter="\t")
         for row in reader:
             row = {(k or "").strip(): (v or "").strip() for k, v in row.items()}
+            scie_col = next((k for k in row if k.upper().startswith("SCIE")), None)
             entry = {
                 "issn": row.get("ISSN", ""),
                 "eissn": row.get("eISSN", ""),
-                "scie": (row.get("SCIE") or "Y").upper(),
+                "scie": ((row.get(scie_col) if scie_col else "") or "Y").upper(),
                 "jif": row.get("IF", ""),
                 "top_pct": row.get("Top %", ""),
                 "jcr_title": row.get("JCR 정식명", ""),
