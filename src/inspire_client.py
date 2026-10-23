@@ -30,7 +30,11 @@ class InspireClient:
         if self._cache is not None:
             cached = self._cache.get("inspire_doi", doi)
             # preprint_date 키가 없는 옛 캐시는 게재일에 투고일이 섞였을 수 있어 다시 조회한다.
-            if cached is not None and "preprint_date" in cached and "issn_online" in cached:
+            # 저자 소속(affiliations)이 없는 옛 캐시는 이니셜 저자 판정에 못 써서 다시 조회한다.
+            if (
+                cached is not None and "preprint_date" in cached and "issn_online" in cached
+                and all("affiliations" in a for a in cached.get("authors", []))
+            ):
                 record = _record_from_dict(cached)
                 if is_complete(record):
                     return record
@@ -58,7 +62,11 @@ class InspireClient:
         if self._cache is not None:
             cached = self._cache.get("inspire_arxiv", arxiv_id)
             # preprint_date 키가 없는 옛 캐시는 게재일에 투고일이 섞였을 수 있어 다시 조회한다.
-            if cached is not None and "preprint_date" in cached and "issn_online" in cached:
+            # 저자 소속(affiliations)이 없는 옛 캐시는 이니셜 저자 판정에 못 써서 다시 조회한다.
+            if (
+                cached is not None and "preprint_date" in cached and "issn_online" in cached
+                and all("affiliations" in a for a in cached.get("authors", []))
+            ):
                 record = _record_from_dict(cached)
                 if is_complete(record):
                     return record
@@ -146,7 +154,11 @@ class InspireClient:
                 if ident.get("schema") == "ORCID":
                     orcid = ident.get("value")
                     break
-            authors.append(InspireAuthor(full_name=a.get("full_name", ""), orcid=orcid))
+            affiliations = [x.get("value", "") for x in a.get("affiliations", []) if x.get("value")]
+            affiliations += [x.get("value", "") for x in a.get("raw_affiliations", []) if x.get("value")]
+            authors.append(
+                InspireAuthor(full_name=a.get("full_name", ""), orcid=orcid, affiliations=affiliations)
+            )
 
         collaborations = [c.get("value") for c in metadata.get("collaborations", []) if c.get("value")]
 

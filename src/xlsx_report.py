@@ -195,7 +195,8 @@ def _write_summary(ws, tabs, year):
     ws["A2"] = f"작성일 {date.today().isoformat()} · journal_info_collector (python main.py report)"
     ws["A2"].font = normal
 
-    headers = ["커뮤니티", "구분", "출판 논문", "SCIE 논문", "유발 논문", "저자 Y", "사사 Y", "Funder ID Y", "KIST 오태깅"]
+    headers = ["커뮤니티", "구분", "출판 논문", "SCIE 논문", "유발 논문", "저자 Y", "사사 Y", "Funder ID Y",
+               "KIST 오태깅", "Funder 이름만"]
     ws.append([])
     ws.append(headers)
     header_row = ws.max_row
@@ -218,6 +219,7 @@ def _write_summary(ws, tabs, year):
             f'=COUNTIF({rng(name, "Ack")},"Y")',
             f'=COUNTIF({rng(name, "Funder")},"Y")',
             f'=COUNTIF({rng(name, "Funder")},"KIST오태깅")',
+            f'=COUNTIF({rng(name, "Funder")},"이름만")',
         ])
     last = ws.max_row
     ws.append([
@@ -234,7 +236,7 @@ def _write_summary(ws, tabs, year):
 
     notes = [
         "판정 기준",
-        "· 유발 논문: SCIE 저널 논문 중 저자(GSDC 담당자 ORCID)·사사 원문(KISTI/GSDC)·Funder ID(KISTI, KIST 오태깅 포함) 중 하나라도 해당.",
+        "· 유발 논문: SCIE 저널 논문 중 저자(GSDC 담당자)·사사 원문(KISTI/GSDC)·Funder(KISTI ID, KIST 오태깅, ID 없이 기관명만 등록 포함) 중 하나라도 해당.",
         "· SCIE·IF·JIF 상위%: config/journals_<연도>.tsv(JCR에서 정리)를 ISSN으로 매칭. ISSN 없음·SCIE 아님은 유발 논문 N, 표에 없는 저널은 보류.",
         "· ISSN은 전자판 출판이어도 인쇄판 우선. 게재일은 CrossRef·INSPIRE 중 이른 날짜(온라인 게재일).",
         "· 출처: 커뮤니티 공식 목록 / INSPIRE / OpenAlex(KISTI 검색)에서 확인 여부.",

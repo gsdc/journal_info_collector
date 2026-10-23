@@ -190,7 +190,7 @@ def _submitted_recently(raw, year):
 
 
 # 판정 로직이 바뀌면 올린다 — 저장된 확정 결과 중 버전이 다른 것은 다시 판정한다.
-EVIDENCE_VERSION = 6
+EVIDENCE_VERSION = 7
 
 
 def _evidence_keys(doi, arxiv_id):

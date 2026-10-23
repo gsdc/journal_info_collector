@@ -34,6 +34,9 @@ _EVIDENCE_LABELS = [
     # 출판사가 KISTI를 KIST DOI로 잘못 등록한 경우 — KISTI를 funder로 밝힌 것은
     # 맞으므로 근거로 세되, 수정 요청 대상이라 구분해서 표기한다.
     ("Funder", "KIST오태깅", "Funder ID(KIST 오태깅)"),
+    # CrossRef funder에 KISTI 기관명은 있는데 ID가 빠진 경우 — KISTI 지원은 맞으므로
+    # 근거로 세되, ID 추가 요청 대상이라 구분해서 표기한다.
+    ("Funder", "이름만", "Funder 기관명(ID 누락)"),
 ]
 
 # Funder 값별로 출판사/컬래버레이션에 수정 요청이 필요할 수 있는 경우

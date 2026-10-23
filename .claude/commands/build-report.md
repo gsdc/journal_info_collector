@@ -68,6 +68,7 @@ OpenAlex:<O|O(KISTI)|O(출판 확인)|X|->`. OpenAlex "O"는 논문이 OpenAlex�
      → "KIST오태깅" (유발근거로 세되 수정 요청 대상)
    - "KIST확인": KIST ID가 있는데 오태깅인지 판단 근거가 없음 → "KIST확인"
    - "이름만": KISTI 이름만 있고 funder ID가 비어 있음 → "이름만"
+     (KISTI 지원은 맞으므로 유발근거로 센다 — "Funder 기관명(ID 누락)", ID 추가 요청 대상)
    - "N" 또는 null(출판사가 funder 정보를 등록 안 함) → "N"
    KIST/ID 누락 건은 출판사·컬래버레이션에 수정 요청할 수 있도록 csv_writer가
    `Funder 수정요청` 컬럼에 자동으로 사유를 적는다. 근거는 `ack_funder_note` 참고.

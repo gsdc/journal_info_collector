@@ -35,6 +35,9 @@ class RawPublication:
 class InspireAuthor:
     full_name: str
     orcid: Optional[str] = None
+    # INSPIRE 소속 표기(정규화 값 + 원문 값). 저자가 "Bae, S."처럼 이니셜로만 있고
+    # ORCID가 없을 때 KISTI 소속으로 담당자인지 판단하는 데 쓴다.
+    affiliations: list = field(default_factory=list)
 
 
 @dataclass
