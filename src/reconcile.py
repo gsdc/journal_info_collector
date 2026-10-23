@@ -228,7 +228,9 @@ def openalex_existing_dois(settings, dois):
         chunk = dois[i:i + 50]
         data = _openalex_get(
             base_url,
-            {"filter": "doi:" + "|".join(chunk), "per_page": 50, "select": "doi"},
+            # OpenAlex에는 같은 DOI 레코드가 2개인 경우가 있어(예: 10.1016/j.physletb.2026.140671)
+            # 결과가 DOI 수보다 많을 수 있다 — per_page를 넉넉히 줘야 뒤쪽이 잘리지 않는다.
+            {"filter": "doi:" + "|".join(chunk), "per_page": 200, "select": "doi"},
             api_key,
         )
         found |= {(w.get("doi") or "").replace("https://doi.org/", "").lower() for w in data["results"]}

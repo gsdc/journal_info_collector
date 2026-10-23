@@ -349,7 +349,8 @@ def _source_label(c, community_cfg, openalex_dois, openalex_existing=None):
     elif community_cfg.get("downloader") == "inspire_collab":
         page = "공식목록 없음"
     else:
-        page = _PAGE_STATUS_LABEL.get(c.get("raw_status"), c.get("raw_status") or "?")
+        # 알려진 상태가 아니면(예: LIGO 저널 칸에 DOI도 "submitted"도 아닌 문구) "기타 표기"
+        page = _PAGE_STATUS_LABEL.get(c.get("raw_status"), "기타 표기")
 
     if c.get("inspire_title") is None and not c.get("collaborations"):
         inspire = "X"

@@ -18,12 +18,18 @@ from .csv_writer import COLUMNS, candidate_to_row, finalize_row
 from .reconcile import collab_query
 
 FONT = "Arial"
-_HEADER_FILL = PatternFill("solid", start_color="DDEBF7")
+_HEADER_FILL = PatternFill("solid", start_color="D9D9D9")
 _REF_TAB_COLOR = "BFBFBF"
-# 행 색: 3곳(커뮤니티 공식 목록·INSPIRE·OpenAlex) 모두 확인 / INSPIRE·OpenAlex만 확인 / 결격
-_FILL_ALL3 = PatternFill("solid", start_color="E2EFDA")     # 옅은 녹색
-_FILL_IO = PatternFill("solid", start_color="FFF2CC")       # 노란색
-_FILL_DISQ = PatternFill("solid", start_color="F8CBAD")     # 옅은 붉은색
+# 행 색(위에서부터 우선):
+#   증빙 논문(유발 논문 Y) / 증빙 불가·공식 페이지에 출판으로 입력 /
+#   증빙 불가·INSPIRE나 OpenAlex로 출판 확인 / 나머지
+_FILL_EVIDENCE = PatternFill("solid", start_color="E2EFDA")   # 옅은 녹색
+_FILL_OFFICIAL = PatternFill("solid", start_color="DDEBF7")   # 옅은 파란색
+_FILL_IO = PatternFill("solid", start_color="FFF2CC")         # 노란색
+_FILL_OTHER = PatternFill("solid", start_color="EDEDED")      # 옅은 회색
+# 결격(SCIE 아님·ISSN 없음)은 행 색이 아니라 SCIE 칸에 표시
+_FILL_DISQ = PatternFill("solid", start_color="F8CBAD")
+_FONT_DISQ_COLOR = "C00000"
 _HEADER_ROW = 3  # 1행: 출판 정보 주소, 2행: 색 범례, 3행: 표 머리글
 _WIDTHS = {
     "No.": 5, "title": 60, "journal": 18, "ISSN": 11, "Vol": 6, "Page": 9, "coll.": 9,
@@ -60,17 +66,20 @@ def source_urls(community_cfg):
 
 
 def _row_fill(candidate, row):
-    """행 색은 유발 논문 판정 결과로 정한다.
-    녹색: 유발 논문 Y / 붉은색: 결격(SCIE 아님·ISSN 없음)으로 N /
-    노란색: INSPIRE·OpenAlex에서 출판은 확인됐지만 증빙이 없어 N."""
-    if row.get("유발논문") == "Y":
-        return _FILL_ALL3
-    if row.get("SCIE") == "N":
-        return _FILL_DISQ
+    """행 색 4가지(위에서부터 우선).
+    녹색: 증빙 논문(유발 논문 Y — 출판은 3곳 중 어디서든 확인된 상태)
+    파란색: 증빙 불가지만 커뮤니티 공식 페이지에 출판으로 입력
+    노란색: 증빙 불가지만 INSPIRE나 OpenAlex로 출판 확인
+    회색: 나머지
+    결격(SCIE 아님·ISSN 없음)은 SCIE 칸 색으로 따로 표시한다."""
     label = candidate.get("source_label") or ""
-    if "INSPIRE:O" in label and "OpenAlex:O" in label:
+    if row.get("유발논문") == "Y":
+        return _FILL_EVIDENCE
+    if "커뮤니티:출판" in label:
+        return _FILL_OFFICIAL
+    if "INSPIRE:O" in label or "OpenAlex:O" in label:
         return _FILL_IO
-    return None
+    return _FILL_OTHER
 
 
 def _write_header_block(ws, community_cfg):
@@ -84,9 +93,11 @@ def _write_header_block(ws, community_cfg):
         col += 1
     legend = [
         ("범례", None),
-        ("유발 논문(SCIE + 저자·사사·Funder ID 근거)", _FILL_ALL3),
-        ("출판 확인(INSPIRE·OpenAlex)됐지만 증빙 없음 — 유발 논문 아님", _FILL_IO),
-        ("결격(SCIE 아님·ISSN 없음) — 유발 논문 아님", _FILL_DISQ),
+        ("증빙 논문(유발 논문 Y)", _FILL_EVIDENCE),
+        ("증빙 불가 · 공식 페이지에 출판으로 입력", _FILL_OFFICIAL),
+        ("증빙 불가 · INSPIRE/OpenAlex로 출판 확인", _FILL_IO),
+        ("나머지", _FILL_OTHER),
+        ("SCIE 칸 붉은색 = 결격(SCIE 아님·ISSN 없음)", _FILL_DISQ),
     ]
     for i, (text, fill) in enumerate(legend, 1):
         cell = ws.cell(row=2, column=i, value=text)
@@ -150,6 +161,12 @@ def build_workbook(candidates, communities, year):
             ws.sheet_properties.tabColor = _REF_TAB_COLOR
         _write_header_block(ws, cfg)
         _write_table(ws, COLUMNS, rows, fills)
+        scie_col = COLUMNS.index("SCIE") + 1
+        for r in range(_HEADER_ROW + 1, len(rows) + _HEADER_ROW + 1):
+            cell = ws.cell(row=r, column=scie_col)
+            if cell.value == "N":
+                cell.fill = _FILL_DISQ
+                cell.font = Font(name=FONT, bold=True, color=_FONT_DISQ_COLOR)
         doi_col = COLUMNS.index("DOI") + 1
         for r in range(_HEADER_ROW + 1, len(rows) + _HEADER_ROW + 1):
             cell = ws.cell(row=r, column=doi_col)
