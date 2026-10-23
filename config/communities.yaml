@@ -77,13 +77,14 @@ communities:
   - name: EIC
     downloader: inspire_collab
     url: "https://inspirehep.net/api/literature"
-    # ePIC(EIC 검출기 컬래버레이션)과 하위 그룹, EIC 이름의 그룹들. ATHENA·CORE(옛 제안 그룹)는
-    # 동명의 다른 프로젝트와 섞여 넣지 않는다. 전파천문 장비 EPIC은 제외.
+    # ePIC(EIC 검출기 컬래버레이션)과 그 하위 그룹(SVT, dRICH 등)만. "EIC*"로 넓히면
+    # 국내 현상론 그룹(EICϕ) 등 ePIC과 무관한 논문이 섞여 제외했다. ePIC*는 대소문자를
+    # 가리지 않아 이름이 같은 다른 프로젝트(전파천문 장비, 우주론 위성 계획 EPIC)를 뺀다.
     inspire_query: >-
-      (collaboration:ePIC* or collaboration:EIC* or collaboration:"Korea DRC team for the EIC"
-      or collaboration:"Trieste EIC Groups" or collaboration:"BNL EIC Science Task Force")
+      collaboration:ePIC*
       and not collaboration:"E-field Parallel Imaging Correlator"
-    inspire_collaborations: ["ePIC", "EIC"]
+      and not t "Experimental Probe of Inflationary Cosmology"
+    inspire_collaborations: ["ePIC"]
     collab_min_authors: 1
 
   # ENIGMA(East-Asian Network Initiative for Gravity Measurement Alliance):
