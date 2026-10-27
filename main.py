@@ -5,7 +5,7 @@
       -> 커뮤니티별 논문 목록 다운로드 + INSPIRE-HEP/CrossRef 조회 + Auth 판정
          + Ack 발췌까지 마친 뒤 data/candidates.json 에 저장.
          --year를 주면 해당 연도(pub_date_raw 기준)에 출판된 논문만 대상으로 함.
-         (Ack Y/N 최종 판정, 커뮤니티 정보와 INSPIRE 정보 불일치 검토는
+         (사사 원문 재확인과 커뮤니티 정보·INSPIRE 정보 교차검증은
           이후 Claude Code의 /build-report 슬래시 커맨드에서 수행)
 
   python main.py scan-ack-gap [--community CMS ...] [--year 2026 | --since-days 730] [--limit N]
@@ -23,17 +23,29 @@
          SCIE 여부·JIF·JIF 첫번째 카테고리·상위%는 JCR에서 채우는 빈 칸으로 둔다.
 
   python main.py report --year 2026 [--candidates data/candidates.json]
-      -> 최종 결과를 엑셀 파일 하나(output/journal_report_2026.xlsx)로 정리.
-         요약 탭 + 커뮤니티별 탭(참고용은 "(참고) " 접두) + 출판 미확인 탭.
+      -> 최종 결과를 CSV(output/journal_report.csv, 참고용은
+         output/journal_report_reference.csv)와 엑셀 파일 하나
+         (output/journal_report_2026.xlsx)로 정리. 엑셀은 요약 탭 + 커뮤니티별 탭
+         (참고용은 "(참고) " 접두) + 출판 미확인 탭.
+         fetch를 --year로 전체 커뮤니티 실행하면 끝에 자동 실행됨.
 """
 import argparse
 import json
 
+from src import config
 from src.ack_gap_scan import scan_computing_ack_gap
+from src.csv_writer import write_csv_reports
 from src.pipeline import build_candidates, save_candidates
 from src.journal_list import write_journal_list
 from src.reconcile import run_reconcile
 from src.xlsx_report import write_xlsx_report
+
+
+def write_reports(year, candidates, settings):
+    """최종 CSV(판정 대상·참고용)와 엑셀을 같은 candidates로 만든다."""
+    for path, n in write_csv_reports(candidates, settings):
+        print(f"[report] CSV {n}건 -> {path}")
+    print(f"[report] 엑셀 -> {write_xlsx_report(year, candidates=candidates, settings=settings)}")
 
 
 def main():
@@ -60,7 +72,7 @@ def main():
     rec_p = sub.add_parser("reconcile", help="커뮤니티 페이지·INSPIRE·OpenAlex 대조 보고서")
     rec_p.add_argument("--year", type=int, required=True)
 
-    rp_p = sub.add_parser("report", help="최종 결과 엑셀(커뮤니티별 탭) 생성")
+    rp_p = sub.add_parser("report", help="최종 결과 CSV·엑셀(커뮤니티별 탭) 생성")
     rp_p.add_argument("--year", type=int, required=True)
     rp_p.add_argument("--candidates", default=None, help="candidates.json 경로(기본: 설정값)")
 
@@ -79,17 +91,16 @@ def main():
             run_reconcile(args.year, candidates=candidates, settings=settings)
             path, rows = write_journal_list(args.year, candidates=candidates, settings=settings)
             print(f"[journals] 저널 {len(rows)}개 -> {path}")
-            print(f"[report] 엑셀 -> {write_xlsx_report(args.year, candidates=candidates, settings=settings)}")
+            write_reports(args.year, candidates, settings)
 
     elif args.cmd == "reconcile":
         run_reconcile(args.year)
 
     elif args.cmd == "report":
-        candidates = None
-        if args.candidates:
-            with open(args.candidates, encoding="utf-8") as f:
-                candidates = json.load(f)
-        print(f"wrote {write_xlsx_report(args.year, candidates=candidates)}")
+        settings = config.load_settings()
+        with open(args.candidates or settings["output"]["candidates_path"], encoding="utf-8") as f:
+            candidates = json.load(f)
+        write_reports(args.year, candidates, settings)
 
     elif args.cmd == "journals":
         candidates = None

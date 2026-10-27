@@ -33,11 +33,9 @@ _MAX_TOTAL_EXCERPT = 8000    # 파일별 발췌를 모두 합친 뒤 자를 최�
 class ArxivFetcher:
     """arXiv e-print(LaTeX 소스)를 내려받아 Acknowledgements 절 후보 텍스트를 뽑아낸다.
 
-    KISTI/GSDC 언급 여부의 최종 판정은 이 모듈이 하지 않는다(표기가
-    "KISTI" 축약형일 수도, "Korea Institute of Science and Technology
-    Information" 전체 명칭일 수도 있어 문구가 커뮤니티/논문마다 다르다).
-    여기서는 판정에 필요한 원문 발췌만 만들고, 실제 Y/N 판단은
-    /build-report 같은 LLM 단계에서 사람이 검토하듯 판단한다.
+    사사 영역에서 KISTI/GSDC 언급을 정규식으로 찾아 Ack Y/N을 정한다. 표기가
+    커뮤니티/논문마다 달라("KISTI" 축약형, 전체 기관명 등) 정규식이 놓칠 수 있으므로
+    발췌도 함께 남기고, N인 논문은 /build-report(LLM) 단계에서 발췌를 다시 본다.
     """
 
     def __init__(self, settings):

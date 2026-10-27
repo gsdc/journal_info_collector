@@ -27,5 +27,14 @@ def load_paper_notes():
     return {str(k).lower(): str(v) for k, v in notes.items()}
 
 
+def load_review_overrides():
+    """{DOI(소문자): {"ack": 값, "reason": 사유}}. /build-report 재확인으로 고친 Ack 판정.
+    파일이 없으면 빈 dict."""
+    if not (CONFIG_DIR / "review_overrides.yaml").exists():
+        return {}
+    overrides = _load_yaml("review_overrides.yaml").get("ack_overrides") or {}
+    return {str(k).lower(): v for k, v in overrides.items()}
+
+
 def load_responsible_authors():
     return _load_yaml("responsible_authors.yaml")["responsible_authors"]

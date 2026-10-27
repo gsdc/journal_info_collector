@@ -434,12 +434,12 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
     Auth 판정 + Ack 발췌까지 마친 candidate 목록을 만든다.
 
     DOI가 아직 없는(투고/게재확정 단계) 논문도 일단 리스트에 포함시키되,
-    arXiv ID로 INSPIRE를 다시 조회해서 그 사이 출판됐는지 확인한다. 최종적으로
-    이걸 리포트에 넣을지는 candidate의 `publication_status`를 보고 다음
-    단계(/build-report)에서 판단한다 — 여기서는 임의로 빼지 않는다.
+    arXiv ID로 INSPIRE를 다시 조회해서 그 사이 출판됐는지 확인한다. 최종 보고서에
+    넣을지는 candidate의 `publication_status`로 보고서 단계(csv_writer·xlsx_report)가
+    정한다 — 여기서는 임의로 빼지 않는다.
 
-    Ack의 Y/N 최종 판정과 커뮤니티-INSPIRE 정보 불일치 검토는 여기서 하지
-    않고 다음 단계(LLM)에 넘긴다.
+    사사 원문 N 재확인과 커뮤니티-INSPIRE 정보 불일치 검토는 /build-report(LLM)
+    단계에서 한다.
     """
     settings = config.load_settings()
     communities = config.load_communities()

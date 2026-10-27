@@ -28,8 +28,9 @@ flowchart TD
     ACK --> J
     FUN --> J
     J --> S["SCIE 여부·JIF<br/>(config/journals_연도.tsv)"]
-    S --> X["엑셀 보고서<br/>output/journal_report_연도.xlsx"]
-    S --> R["/build-report (LLM 검토)<br/>output/journal_report.csv"]
+    S --> X["최종 CSV·엑셀<br/>output/journal_report*.csv, .xlsx"]
+    X --> R["/build-report (Claude, 선택)<br/>사사 N 재확인·교차검증·요약"]
+    R -. "Ack 수정 시 review_overrides.yaml" .-> X
 ```
 
 ## 실행
@@ -37,17 +38,20 @@ flowchart TD
 ```bash
 pip install -r requirements.txt
 
-# 수집·조회·근거 판정. --year만 주면 대조 보고서·저널 목록·엑셀까지 만든다.
+# 수집·조회·근거 판정. --year만 주면 대조 보고서·저널 목록·최종 CSV·엑셀까지 만든다.
 python main.py fetch --year 2026 [--community CMS ...] [--limit N]
 
-python main.py report    --year 2026   # 엑셀만 다시 만들기
+python main.py report    --year 2026   # 최종 CSV·엑셀만 다시 만들기
 python main.py reconcile --year 2026   # 커뮤니티·INSPIRE·OpenAlex 대조 보고서
 python main.py journals  --year 2026   # SCIE/JIF 조사용 저널 목록
 python main.py scan-ack-gap --year 2026  # 컴퓨팅 센터는 감사하는데 KISTI는 빠진 논문 찾기
 ```
 
-CSV는 Claude Code에서 `/build-report`로 만든다(`.claude/commands/build-report.md`).
-정기 실행은 `scripts/scheduled_fetch.sh [연도]`를 쓴다.
+최종 CSV·엑셀은 Claude 없이 Python으로 나온다. Claude Code의 `/build-report`
+(`.claude/commands/build-report.md`)는 그 결과를 검토하는 선택 단계다. 사사가 `N`인
+논문의 원문 발췌에서 정규식이 놓친 표기를 다시 찾고, 공식 목록과 INSPIRE/CrossRef
+서지정보를 교차검증해 요약한다. Ack를 고칠 때는 `config/review_overrides.yaml`에
+남기고 `report`를 다시 실행한다. 정기 실행은 `scripts/scheduled_fetch.sh [연도]`를 쓴다.
 
 | 산출물 | 내용 |
 |---|---|
@@ -107,8 +111,8 @@ CSV는 Claude Code에서 `/build-report`로 만든다(`.claude/commands/build-re
 arXiv e-print를 받아 사사 영역에서 "KISTI", "Korea Institute of Science and
 Technology Information", "GSDC", "Global Science (experimental) Data hub
 Center"를 찾는다. KIST(Information 없음)는 별개 기관이라 인정하지 않는다.
-결과는 `Y` / `N` / `미확인`(원문을 못 구함)이고, `/build-report`가 발췌를 보고
-정규식이 놓친 표기가 있는지 다시 확인한다.
+결과는 `Y` / `N` / `미확인`(원문을 못 구함)이다. `/build-report`가 `N`인 논문의
+발췌를 다시 보고, 놓친 표기가 있으면 `config/review_overrides.yaml`로 고친다.
 
 ### Funder (`src/ack_check.py`)
 
@@ -146,6 +150,7 @@ Funder가 `N`이어도 KISTI 지원이 없다는 뜻은 아니다. 일부 출판
 | `config/settings.yaml` | API 주소, KISTI funder ID, ISSN fallback, 출력 경로, 캐시 |
 | `config/journals_<연도>.tsv` | JCR SCIE·JIF 표 (라이선스 문제로 커밋 안 함) |
 | `config/paper_notes.yaml` | 논문별 수동 메모 |
+| `config/review_overrides.yaml` | `/build-report` 재확인으로 고친 Ack 판정 |
 
 ## 참고
 

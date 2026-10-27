@@ -118,9 +118,28 @@ def _manual_note(doi):
     return _paper_notes.get((doi or "").lower(), "")
 
 
+_review_overrides = None
+
+
+def _ack_override(doi):
+    """config/review_overrides.yaml에서 /build-report 재확인으로 고친 Ack 판정."""
+    global _review_overrides
+    if _review_overrides is None:
+        from . import config
+
+        _review_overrides = config.load_review_overrides()
+    return _review_overrides.get((doi or "").lower())
+
+
 def candidate_to_row(c):
     """candidates.json의 출판 논문 하나를 보고서 행(dict)으로 옮긴다(자동 계산 컬럼 제외).
-    /build-report의 행 스키마와 같은 규칙: Ack는 사사 원문 판정, Funder는 funder ID 판정."""
+    Ack는 사사 원문 판정(재확인으로 고친 값이 있으면 그 값), Funder는 funder ID 판정."""
+    override = _ack_override(c.get("doi"))
+    ack = c.get("ack_text_status") or ""
+    override_note = ""
+    if override and override.get("ack"):
+        override_note = f"Ack 재확인 {ack or '-'}→{override['ack']}: {override.get('reason', '')}".rstrip(": ")
+        ack = override["ack"]
     return {
         "title": c.get("inspire_title") or c.get("raw_title") or "",
         "journal": c.get("journal") or "",
@@ -134,16 +153,32 @@ def candidate_to_row(c):
         "SCIE": c.get("scie") or "",
         "DOI": c.get("doi") or "",
         "Auth": c.get("auth_status") or "",
-        "Ack": c.get("ack_text_status") or "",
+        "Ack": ack,
         "Funder": c.get("ack_funder_status") if c.get("ack_funder_status") in _FUNDER_VALUES else "N",
         "출처": c.get("source_label") or "",
         "비고": " / ".join(
             n for n in (
                 f"게재 예정({c.get('date')})" if c.get("pub_date_future") else "",
                 _manual_note(c.get("doi")),
+                override_note,
             ) if n
         ),
     }
+
+
+def write_csv_reports(candidates, settings):
+    """candidates.json의 출판 논문으로 최종 CSV 2개를 쓴다: 판정 대상 커뮤니티
+    (output.csv_path)와 참고용 커뮤니티(output.reference_csv_path). 최신 논문 먼저.
+    반환: [(경로, 행 수), ...]"""
+    published = [c for c in candidates if c.get("publication_status") == "published"]
+    published.sort(key=lambda c: c.get("date") or "", reverse=True)
+    out = []
+    for key, reference in (("csv_path", False), ("reference_csv_path", True)):
+        rows = [candidate_to_row(c) for c in published if bool(c.get("reference_only")) == reference]
+        path = settings["output"][key]
+        write_report_csv(rows, path)
+        out.append((path, len(rows)))
+    return out
 
 
 def write_report_csv(rows, path, encoding="utf-8-sig"):
