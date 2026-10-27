@@ -337,6 +337,9 @@ def _supplement(raw_pubs, name, year, collab_records, openalex_records, min_auth
     return raw_pubs + added
 
 
+# OpenAlex KISTI 검색에서 어떤 조건에 걸렸는지 표시할 이름
+_KISTI_VIA_LABEL = {"funder": "funder", "institution": "소속", "orcid": "담당자"}
+
 _PAGE_STATUS_LABEL = {
     "published": "출판",
     "published_no_doi": "출판(DOI 미표기)",
@@ -349,7 +352,7 @@ _PAGE_STATUS_LABEL = {
 def _source_label(c, community_cfg, openalex_dois, openalex_existing=None):
     """출처 컬럼: 커뮤니티 공식 목록 / INSPIRE / OpenAlex 각각에서 이 논문이
     확인되는지. 판정의 근거를 사람이 볼 수 있게 남긴다.
-    OpenAlex: "O" 논문이 있음, "O(KISTI)" KISTI funder·소속·담당자 검색에도 잡힘,
+    OpenAlex: "O" 논문이 있음, "O(KISTI: funder·소속·담당자)" KISTI 검색에서 걸린 조건,
     "O(출판 확인)" INSPIRE로 확인 못 한 출판을 OpenAlex 제목 검색으로 확인, "X" 없음,
     "-" 조회 실패."""
     origin = c.get("origin", "community")
@@ -361,18 +364,26 @@ def _source_label(c, community_cfg, openalex_dois, openalex_existing=None):
         # 알려진 상태가 아니면(예: LIGO 저널 칸에 DOI도 "submitted"도 아닌 문구) "기타 표기"
         page = _PAGE_STATUS_LABEL.get(c.get("raw_status"), "기타 표기")
 
+    published = c.get("publication_status") == "published"
     if c.get("inspire_title") is None and not c.get("collaborations"):
         inspire = "X"
+    elif not published:
+        # 미출판 논문의 INSPIRE 레코드는 arXiv 프리프린트일 뿐 출판 확인이 아니다
+        inspire = "프리프린트"
     elif c.get("match_status") == "matched_via_title":
         inspire = "O(제목 대조)"
     else:
         inspire = "O"
 
     doi = (c.get("doi") or "").lower()
-    if c.get("match_status") == "matched_via_openalex":
+    if not published:
+        openalex = "출판본 미확인"
+    elif c.get("match_status") == "matched_via_openalex":
         openalex = "O(출판 확인)"
     elif openalex_dois is not None and doi in openalex_dois:
-        openalex = "O(KISTI)"
+        via = openalex_dois.get(doi) if isinstance(openalex_dois, dict) else None
+        names = [_KISTI_VIA_LABEL[v] for v in (via or []) if v in _KISTI_VIA_LABEL]
+        openalex = f"O(KISTI: {'·'.join(names)})" if names else "O(KISTI)"
     elif openalex_existing is not None and doi in openalex_existing:
         openalex = "O"
     elif openalex_existing is None and openalex_dois is None:
@@ -451,7 +462,8 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
             works = _load_saved_openalex(settings, year, same_day=True) or openalex_kisti_works(
                 settings, orcids, year
             )
-            openalex_dois = set(works)
+            # DOI -> OpenAlex KISTI 검색에서 걸린 조건(funder/institution/orcid)
+            openalex_dois = {d: sorted(w["via"]) for d, w in works.items()}
             openalex_md = inspire_records_by_doi(settings, works)
             path = settings["output"].get("openalex_path", "data/openalex_kisti.json")
             with open(path, "w", encoding="utf-8") as f:

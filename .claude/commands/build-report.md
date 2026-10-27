@@ -37,9 +37,11 @@ ISSN은 전자판으로 출판됐어도 인쇄판을 우선 기입한다(인쇄�
 
 `출처` 컬럼(`candidate.source_label`)은 논문을 어디서 확인했는지 판단 근거로 남긴다:
 `커뮤니티:<출판|게재확정 표기|투고 표기|없음|공식목록 없음> / INSPIRE:<O|O(제목 대조)|X> /
-OpenAlex:<O|O(KISTI)|O(출판 확인)|X|->`. OpenAlex "O"는 논문이 OpenAlex에 있음,
-"O(KISTI)"는 KISTI funder·소속·담당자 ORCID 검색에도 잡힘, "O(출판 확인)"은 INSPIRE에서
-출판이 확인되지 않아 OpenAlex 제목 검색으로 출판본을 찾은 경우다. 커뮤니티 페이지에 없던 논문은 끝에 "(INSPIRE 목록에서 보충)" 또는
+OpenAlex:<O|O(KISTI: …)|O(출판 확인)|X|->`. OpenAlex "O"는 논문이 OpenAlex에 있음,
+"O(KISTI: funder·소속·담당자)"는 OpenAlex KISTI 검색에서 걸린 조건(KISTI funder / KISTI
+소속 저자 / 담당자 ORCID — 참고 신호이며 판정에는 쓰지 않음), "O(출판 확인)"은 INSPIRE에서
+출판이 확인되지 않아 OpenAlex 제목 검색으로 출판본을 찾은 경우다. 미출판 논문은
+"INSPIRE:프리프린트 / OpenAlex:출판본 미확인"으로 표시된다. 커뮤니티 페이지에 없던 논문은 끝에 "(INSPIRE 목록에서 보충)" 또는
 "(OpenAlex에서만 발견)"이 붙는다.
 
 1. **Auth (저자)** — `auth_status`를 그대로 쓴다. Python이 지정 담당자 명단
