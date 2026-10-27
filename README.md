@@ -1,183 +1,156 @@
 # journal_info_collector
 
-KISTI/GSDC가 지원하는 실험 커뮤니티 11곳(CMS, ALICE, Belle II, LIGO, DUNE,
-JSNS2, HK/SK, RENE, FCC, EIC, ENIGMA)의 논문 목록을 각 커뮤니티 공식 게시
-페이지(없으면 INSPIRE-HEP·OpenAlex 검색)에서 수집하고, INSPIRE-HEP·CrossRef로 서지정보를
-보강한 뒤, "이 논문에 KISTI/GSDC 담당자가 저자로 참여했는지(Auth)"와
-"사사(Acknowledgements)에 KISTI/GSDC가 언급됐는지(Ack)"를 판정해 보고서용
-CSV(`output/journal_report.csv`)를 만드는 파이프라인이다.
+KISTI/GSDC가 지원하는 실험 커뮤니티의 연간 출판 논문을 모아, 각 논문이
+**KISTI 유발 논문**인지 판정하는 파이프라인이다. 유발 논문은 SCIE 저널 논문이면서
+아래 세 근거 중 하나 이상이 있는 논문이다.
+
+| 근거 | 확인 대상 | 확인 방법 |
+|---|---|---|
+| **Auth** (저자) | KISTI/GSDC 담당자가 저자인가 | INSPIRE·CrossRef 저자 목록과 담당자 명단 대조 |
+| **Ack** (사사) | 사사 원문에 KISTI/GSDC가 있는가 | arXiv TeX 원문의 Acknowledgements 검색 |
+| **Funder** (funder ID) | 출판사 메타데이터에 KISTI funder ID가 있는가 | CrossRef FundRef 조회 |
+
+세 근거는 서로 대신하지 않는다. 출판 논문마다 셋을 **모두 따로 확인**해 각 컬럼에 적는다.
 
 ## 전체 흐름
 
 ```mermaid
 flowchart TD
-    A["config/communities.yaml"] --> B["downloader (커뮤니티별)"]
-    B -->|"RawPublication 목록<br/>(title, doi/arxiv_id, 날짜, status)"| C["pipeline.build_candidates"]
-    C --> D["InspireClient<br/>(DOI 우선, 없으면 arXiv ID)"]
-    C --> E["CrossrefClient<br/>(DOI로 보강 조회)"]
-    D --> F["_resolve_issn / journal / volume / page / date"]
-    E --> F
-    F -->|"journal_issn_fallback"| G["config/settings.yaml"]
-    D --> H["auth_check.check_auth<br/>(config/responsible_authors.yaml 대조)"]
-    E --> H
-    E --> I["ack_check.check_ack_via_funder<br/>(kisti_funder_doi 대조)"]
-    I -->|"Y가 아니면"| J["ArxivFetcher<br/>(tex 원문에서 Acknowledgements 발췌)"]
-    H --> K["data/candidates.json"]
-    I --> K
-    J --> K
-    F --> K
-    K --> L["/build-report (Claude Code 슬래시 커맨드)<br/>Ack 최종 Y/N, 정보 불일치 검토"]
-    L --> M["output/journal_report.csv"]
+    A["논문 목록 수집<br/>커뮤니티 공식 출판목록 4곳<br/>INSPIRE·OpenAlex 검색 7곳(참고용)"]
+    A --> B["출판 확인·서지정보<br/>INSPIRE-HEP → CrossRef<br/>(DOI 없으면 arXiv ID·제목으로 재검색)"]
+    B --> C{"출판됐나?"}
+    C -- "아니오" --> U["출판 미확인<br/>(보고서 제외, 다음 실행에서 재확인)"]
+    C -- "예" --> AUTH["Auth: 저자<br/>담당자 ORCID / 성·이니셜+KISTI 소속 / 이름"]
+    C -- "예" --> ACK["Ack: 사사 원문<br/>arXiv TeX Acknowledgements"]
+    C -- "예" --> FUN["Funder: funder ID<br/>CrossRef FundRef"]
+    ACK -. "KIST 오태깅 추정에 사용" .-> FUN
+    AUTH --> J["data/candidates.json"]
+    ACK --> J
+    FUN --> J
+    J --> S["SCIE 여부·JIF<br/>(config/journals_연도.tsv)"]
+    S --> X["엑셀 보고서<br/>output/journal_report_연도.xlsx"]
+    S --> R["/build-report (LLM 검토)<br/>output/journal_report.csv"]
 ```
-
-`main.py fetch`가 A\~K까지를 담당하고, 사사(Ack)의 최종 Y/N 판정과 커뮤니티 공식 출판목록 대비
-서지정보 불일치 검토는 `.claude/commands/build-report.md`(`/build-report`
-슬래시 커맨드)에서 LLM이 `data/candidates.json`을 읽어 수행한다(L~M).
 
 ## 실행
 
 ```bash
 pip install -r requirements.txt
 
-# 커뮤니티별 논문 목록 다운로드 + INSPIRE/CrossRef 조회 + Auth 판정 + Ack 발췌
-python main.py fetch [--community CMS ALICE ...] [--year 2026] [--limit N]
+# 수집·조회·근거 판정. --year만 주면 대조 보고서·저널 목록·엑셀까지 만든다.
+python main.py fetch --year 2026 [--community CMS ...] [--limit N]
 
-# "computing centres는 감사하는데 KISTI/GSDC는 전혀 언급 안 된" 논문 찾기
-python main.py scan-ack-gap [--community CMS ...] [--year 2026 | --since-days 730] [--limit N]
+python main.py report    --year 2026   # 엑셀만 다시 만들기
+python main.py reconcile --year 2026   # 커뮤니티·INSPIRE·OpenAlex 대조 보고서
+python main.py journals  --year 2026   # SCIE/JIF 조사용 저널 목록
+python main.py scan-ack-gap --year 2026  # 컴퓨팅 센터는 감사하는데 KISTI는 빠진 논문 찾기
 ```
 
-`fetch` 결과는 `data/candidates.json`에 쌓이고, 이후 Claude Code에서
-`/build-report`를 실행하면 `output/journal_report.csv`가 만들어진다.
+CSV는 Claude Code에서 `/build-report`로 만든다(`.claude/commands/build-report.md`).
+정기 실행은 `scripts/scheduled_fetch.sh [연도]`를 쓴다.
 
-## 커뮤니티별 다운로더 — 논문 목록을 어떻게 찾아내는가
+| 산출물 | 내용 |
+|---|---|
+| `output/journal_report_<연도>.xlsx` | 요약 탭 + 커뮤니티별 탭 + 출판 미확인 탭 |
+| `output/journal_report.csv` | 판정 대상 커뮤니티 최종 보고서 |
+| `output/journal_report_reference.csv` | 참고용 커뮤니티 보고서 |
+| `output/reconcile_report.md` | 출처별로 한쪽에만 있는 논문(누락 의심) |
+| `output/journals_<연도>.txt` | JCR에서 SCIE·JIF를 찾아 넣을 저널 목록 |
 
-커뮤니티 판별은 **각 커뮤니티가 공식적으로 게시하는 논문 목록 페이지를 그대로
-스크래핑**하는 방식이 기본이다(CMS, ALICE, Belle II, LIGO). 공식 목록을 쓸 수
-없는 커뮤니티(DUNE, JSNS2, HK/SK, RENE, FCC, EIC, ENIGMA)만 INSPIRE-HEP 또는
-OpenAlex 검색 결과를 목록으로 대신 쓴다. 이 7곳은 `reference_only: true`인
-참고용 커뮤니티로, 수집·근거 판정은 똑같이 하지만 최종 보고서와 유발논문
-집계에서 빠지고 `output/journal_report_reference.csv`에 따로 나온다.
-`config/communities.yaml`에 커뮤니티별 `url`과 `downloader` 키가 정의돼
-있고, `src/downloaders/registry.py`의 `DOWNLOADERS` 딕셔너리가 그 키를
-실제 다운로더 클래스로 연결한다(`src/downloaders/base.py`의
-`BaseDownloader.fetch()`를 구현). 각 다운로더는 사이트 구조가 서로 달라서
-파싱 방식도 제각각이다:
+## 1. 논문 목록 수집 (`src/downloaders/`)
 
-| 커뮤니티 | 소스 | 파싱 방식 |
+| 커뮤니티 | 목록 소스 | 다운로더 |
 |---|---|---|
-| CMS | `cms-results.web.cern.ch/cms-results/public-results/publications/CMS/CMS_publications.csv` | `csv.DictReader`로 바로 파싱. `DOI`/`Reference` 컬럼으로 상태(published/submitted/accepted/superseded) 판정 |
-| ALICE | `alice-publications.web.cern.ch/publications` | 페이지네이션 있는 HTML 테이블(`views-table`)을 BeautifulSoup으로 순회. 행마다 `<li>` 텍스트가 `"Article reference: ..."`로 시작하면 그 안의 `doi.org` 링크로 DOI 추출. DOI 없는 논문(미출판)은 제외 |
-| Belle II | `docs.belle2.org/pub_data/publications/` | 페이지네이션 있는 HTML 테이블(`table-hover`). 4번째 컬럼이 링크면 `published`+DOI, 텍스트만 있으면 `"published"`/`"submitted"` 접두어로 상태 판정. 날짜 컬럼이 없어 arXiv ID(`YYMM.NNNNN`)에서 연-월을 근사(`date_filter.arxiv_id_to_date`) |
-| LIGO | `pnp.ligo.org/ppcomm/Papers.html` | 단일 페이지 HTML 테이블(`<tbody id="Table">`). "Journal citation" 셀 텍스트에서 정규식 `doi:(\S+)`로 DOI를 뽑아냄. LSC/Virgo/KAGRA 공동 논문도 전부 `LIGO`로 표시 |
-| DUNE, JSNS2, HK/SK, RENE, FCC, EIC (참고용) | `inspirehep.net/api/literature` | 공식 목록이 없거나 읽을 수 없어(DUNE은 공개 페이지에 목록이 없고 실제 목록은 Cloudflare 봇 차단) INSPIRE literature API를 컬래버레이션 이름(`inspire_collaboration(s)`) 또는 직접 쓴 검색식(`inspire_query`)으로 검색. `document_type`이 article인 레코드만 남기고, DOI·arXiv가 모두 없거나 저자 수가 `collab_min_authors`(기본 100) 미만이면 제외 |
-| ENIGMA (참고용) | `api.openalex.org/works` | 고에너지물리가 아니라 INSPIRE에 없어 OpenAlex 검색(`openalex_queries`: 검색어 + 선택적 저자 ID 한정)을 OR로 합침. 같은 이름의 다른 컨소시엄이 있어 정식 명칭이나 핵심 저자로 한정. DOI 있는 저널 논문만 남김 |
+| CMS | `cms-results.web.cern.ch/cms-results/public-results/publications/CMS/CMS_publications.csv` | `cms_csv` |
+| ALICE | `alice-publications.web.cern.ch/publications` | `alice_html` |
+| Belle II | `docs.belle2.org/pub_data/publications/` | `belle2_html` |
+| LIGO | `pnp.ligo.org/ppcomm/Papers.html` | `ligo_html` |
+| DUNE, JSNS2, HK/SK, RENE, FCC, EIC | INSPIRE-HEP 컬래버레이션 검색 | `inspire_collab` |
+| ENIGMA | OpenAlex 검색 | `openalex_search` |
 
-새 커뮤니티를 추가할 때는 `BaseDownloader`를 상속한 클래스를 만들고
-`registry.py`의 `DOWNLOADERS`에 키를 등록한 뒤 `communities.yaml`에
-설정만 추가하면 된다.
+- 위 4곳은 커뮤니티 공식 출판목록을 그대로 읽는다. 나머지 7곳은 공식 목록이
+  없거나 읽을 수 없어 검색 결과를 쓴다(DUNE 목록은 Cloudflare 봇 차단에 막혀 있음).
+- 이 7곳은 `reference_only: true`인 **참고용**이다. 판정은 똑같이 하지만 유발논문
+  집계와 최종 보고서에서 빠진다.
+- 공식 목록에 없어도 INSPIRE 컬래버레이션 출판 목록이나 OpenAlex KISTI 검색
+  (KISTI funder·KISTI 소속·담당자 ORCID)에서 찾은 논문은 보충한다.
+- 커뮤니티 추가: `BaseDownloader.fetch()`를 구현하고 `registry.py`에 등록한 뒤
+  `config/communities.yaml`에 항목을 넣는다.
 
-다운로더가 반환하는 각 논문은 아직 "출판됨이 확정"이 아닐 수 있다
-(`RawPublication.status` — `submitted`/`accepted`/`preprint`/`unknown` 포함).
-DOI가 없어도 일단 목록에 포함시키고, 실제 출판 여부는 다음 단계에서
-INSPIRE-HEP으로 다시 확인한다.
+## 2. 출판 확인 (`src/pipeline.py`)
 
-## INSPIRE-HEP과의 결합 (`src/pipeline.py`, `src/inspire_client.py`)
+목록의 논문은 투고·게재확정 단계일 수 있다. DOI가 확보되면 출판으로 본다.
 
-1. **조회 우선순위** — `_resolve_inspire_record()`: 다운로더가 준 DOI가
-   있으면 `GET /doi/{doi}`로 먼저 조회한다. 못 찾거나 DOI 자체가 없으면
-   `GET /arxiv/{arxiv_id}`로 재조회한다. arXiv 경로가 필요한 이유는 두
-   가지다: (a) 출판사에서 막 DOI가 발급됐는데 INSPIRE의 `dois` 필드
-   반영이 며칠 지연되는 경우, (b) 커뮤니티 공식 출판목록엔 아직 DOI가 없지만
-   INSPIRE는 이미 출판을 인지한 "숨은 출판" 케이스.
-2. **effective DOI** — 커뮤니티 공식 출판목록에 DOI가 없어도 INSPIRE 레코드에 DOI가 있으면
-   그걸 최종 DOI로 채택하고(`effective_doi`), 이 값의 존재 여부로
-   `publication_status`를 `"published"`로 확정한다.
-3. **필드 매핑** — INSPIRE 레코드에서 `journal_title`/`journal_volume`/
-   `page`(`artid` 우선, 없으면 `page_start`)/`pub_date`(`imprints[0].date`,
-   없으면 `preprint_date`)/저자 목록(`full_name`+ORCID)/`collaborations`를
-   가져온다. 제목은 출판사(APS 등) 버전엔 MathML이 섞여 있는 경우가 많아
-   **arXiv 소스로 등록된 title을 우선** 사용한다.
-4. **ISSN** — journal record를 가리키는 `$ref` URL을 한 번 더 조회해
-   ISSN을 얻는다(`_get_journal_issn`, `_journal_cache`로 URL별 캐싱해
-   중복 조회 방지).
-5. **CrossRef 보강** — `effective_doi`가 있으면 CrossRef `/works/{doi}`도
-   조회해서(`src/crossref_client.py`) ORCID·ISSN·출판일을 보강한다.
-   INSPIRE 저자에는 ORCID가 비어 있는 경우가 있어 CrossRef 저자 목록과
-   합쳐서 쓴다.
-6. **최종 ISSN 결정** (`_resolve_issn`) — 우선순위: ① CrossRef가 준
-   `issn_list[0]`, ② INSPIRE의 `issn`, ③ 둘 다 없으면
-   `config/settings.yaml`의 `journal_issn_fallback`을 저널명(short_title)
-   으로 조회. fallback 값은 `"print_ISSN,EISSN"` 형식으로 저장돼 있고,
-   print ISSN이 있으면 그걸, 없으면(electronic-only 저널) EISSN을 쓴다.
+1. 목록의 DOI로 INSPIRE를 조회하고, 없으면 arXiv ID로 조회한다
+   (목록엔 DOI가 없는데 INSPIRE는 출판을 아는 경우).
+2. 그래도 DOI가 없으면 INSPIRE 출판 목록에서 같은 제목을 찾고,
+   마지막으로 OpenAlex에서 제목으로 찾는다(`OPENALEX_API_KEY` 필요).
+3. DOI가 있으면 CrossRef로 저자 ORCID·ISSN·게재일·funder를 보강한다.
+   게재일은 CrossRef와 INSPIRE 중 이른 날짜(온라인 게재일)를 쓴다. ISSN은 CrossRef를
+   우선하고, 없으면 `config/settings.yaml`의 `journal_issn_fallback`을 쓴다.
 
-## 저자(Auth) 판정 — 어느 문서를 참고하는가
+## 3. KISTI 유발 근거 판정
 
-`config/responsible_authors.yaml`이 기준 문서다. 커뮤니티별로 KISTI/GSDC
-담당자 명단(`name`, `orcid`)을 등록해두고, `src/auth_check.py`의
-`check_auth()`가 이 명단을 INSPIRE + CrossRef 저자 목록과 대조한다.
+### Auth (`src/auth_check.py`)
 
-- **ORCID가 있으면 이름 대조는 생략**하고 ORCID만으로 판정한다(오탐 방지).
-  INSPIRE 저자의 ORCID와 CrossRef 저자의 ORCID를 합친 풀(`orcid_pool`)에
-  담당자 ORCID가 있으면 `"Y"`.
-- **ORCID가 없으면** 이름을 알파벳 토큰 집합으로 쪼개(`_name_tokens`,
-  쉼표 제거 후 소문자 알파벳 단어만 추출) 논문 저자 이름 토큰 집합의
-  부분집합인지 확인한다. 매칭되면 `"확인필요"`(표기 차이로 오탐 가능성이
-  있어 사람이 다시 봐야 함을 의미)로 판정하고, 매칭이 없으면 `"N"`.
-- INSPIRE 레코드를 아예 못 찾은 논문은 대조 자체가 불가능하므로
-  `"확인불가"`로 표시한다(`pipeline.py`).
+`config/responsible_authors.yaml`의 커뮤니티별 담당자 명단과 대조한다.
 
-`responsible_authors.yaml`의 주석에도 있듯, ORCID를 채우는 걸 강력히
-권장한다 — 이름만으로는 표기 순서(성/이름)나 철자 차이로 오탐이 날 수
-있기 때문이다.
+| 값 | 조건 |
+|---|---|
+| `Y` | ORCID 일치, 또는 성·이니셜이 같고 그 저자의 소속이 KISTI |
+| `확인필요` | 이름만 일치(표기 차이로 오탐 가능) |
+| `N` | 일치 없음 |
+| `확인불가` | INSPIRE·CrossRef 저자 목록을 구하지 못함 |
 
-## Funder ID(사사) 판정 — funder_id는 어떻게 골라내는가
+### Ack (`src/arxiv_fetcher.py`)
 
-KISTI의 CrossRef FundRef DOI는 `config/settings.yaml`의
-`crossref.kisti_funder_doi` (`10.13039/501100003708`) 하나로 고정돼 있고,
-이 값을 기준으로 `src/ack_check.py`의 `check_ack_via_funder()`가 CrossRef
-서지정보에 붙어 있는 `funder` 배열과 대조한다. 판정은 3단계다:
+arXiv e-print를 받아 사사 영역에서 "KISTI", "Korea Institute of Science and
+Technology Information", "GSDC", "Global Science (experimental) Data hub
+Center"를 찾는다. KIST(Information 없음)는 별개 기관이라 인정하지 않는다.
+결과는 `Y` / `N` / `미확인`(원문을 못 구함)이고, `/build-report`가 발췌를 보고
+정규식이 놓친 표기가 있는지 다시 확인한다.
 
-1. CrossRef 레코드 자체가 없거나 `funder` 목록이 비어 있으면 → `None`
-   (이 출판사는 FundRef 메타데이터를 등록하지 않음 → 아래 arXiv 원문
-   판정으로 넘어감).
-2. `funder` 목록의 DOI 중 `kisti_funder_doi`와 정확히 일치하는 게 있으면
-   → `"Y"` (예: APS/Phys.Rev. 계열은 사사 문구엔 "MSIT and NRF"만 보여도
-   구조화된 funder 목록엔 KISTI DOI가 들어있는 경우가 실제로 확인됨).
-3. DOI가 일치하지 않아도, funder **이름** 문자열에
-   `"Korea Institute of Science and Technology Information"`(대소문자
-   무시, 정규식 매칭)이 있으면 → `"Y"`로 판정한다. 이 이름-기반 보조
-   판정이 필요한 이유는, 일부 출판사가 KISTI를 이름은 정확히 적어놓고도
-   DOI는 **KIST**(Korea Institute of Science and Technology,
-   `10.13039/501100003693` — 이름만 비슷한 별개 기관)로 잘못 태깅해둔
-   사례가 실제로 확인됐기 때문이다. 그래서 `KISTI_NAME_RE`는 "Information"
-   이 붙은 전체 명칭만 매칭하도록 좁혀서 KIST와 구분한다.
-4. 위 조건을 모두 못 만족하면 → `"N"`이지만, 이 `"N"`은 최종 판정이
-   아니다. Elsevier/Springer 등 일부 출판사는 사사 문단을 자동
-   텍스트마이닝해서 funder 목록을 만드는 것으로 보이는데, 원문에 분명히
-   있는 기관이 통째로 빠진 채로 목록이 채워진 사례가 있어 **"목록이
-   있다"가 "완전하다"를 보장하지 않는다.**
+### Funder (`src/ack_check.py`)
 
-그래서 `pipeline.py`는 `"Y"`가 나온 경우만 그대로 신뢰하고, `"N"`이나
-`None`(즉 `"Y"`가 아닌 모든 경우)에는 항상 `src/arxiv_fetcher.py`로
-arXiv LaTeX 원문을 내려받아 Acknowledgements 절 발췌(`ack_excerpt`)를
-추가로 만든다. arXiv e-print(tar.gz 또는 단일 gzip)를 풀어서 `.tex`/`.txt`
-파일들을 모으고, `ack_filename_hints`(`config/settings.yaml` —
-`"fa_"`(ALICE의 funding-acknowledgement 파일), `"ack"`, `"acknowledg"`)
-우선순위로 정렬한 뒤, `"acknowledg"`가 나오는 위치 앞뒤로 텍스트를 잘라
-발췌를 만든다. 이 발췌 안에 KISTI/GSDC가 실제로 언급됐는지의 **최종
-Y/N/미확인 판정은 이 코드가 하지 않고**, `data/candidates.json`을 읽는
-`/build-report` 단계(LLM)에서 표기 차이("KISTI" 축약형 vs 전체 기관명 vs
-"GSDC"/"Global Science ... Data hub Center" 등)까지 감안해 판단한다.
+CrossRef funder 목록에서 KISTI funder ID(`10.13039/501100003708`)를 찾는다.
+출판사가 KISTI를 **KIST**(`10.13039/501100003693`)로 잘못 등록한 사례가 있어
+오태깅을 구분한다.
 
-## 그 외 참고
+| 값 | 조건 | 근거 인정 |
+|---|---|---|
+| `Y` | KISTI ID가 정확히 등록됨 | O |
+| `KIST오태깅` | KIST ID인데 이름이 KISTI이거나, 사사 원문엔 KISTI만 있음 | O (수정 요청) |
+| `이름만` | KISTI 이름은 있으나 ID가 비어 있음 | O (ID 추가 요청) |
+| `KIST확인` | KIST ID가 있으나 오태깅인지 판단 불가 | X (사람 확인) |
+| `N` / 없음 | KISTI 항목 없음 / 출판사가 funder를 등록 안 함 | X |
 
-- **날짜 필터링**(`src/date_filter.py`): `--year`/`--since-days`는 파싱 가능한
-  날짜에만 적용되고, 날짜를 못 읽으면 안전하게 포함시킨다.
-- **최종 CSV 스키마**(`src/csv_writer.py`): `No., title, journal, ISSN, Vol,
-  Page, coll., date, IF, JCI percentile, DOI, Auth, Ack` — `No.`는 항상 CSV
-  작성 시점에 순서대로 다시 매겨진다.
-- **개인정보**: `config/responsible_authors.yaml`에는 KISTI/GSDC 담당자의
-  실명과 ORCID가 들어있다. ORCID는 연구자 공개 식별자이므로 이 저장소에
-  포함해 커밋한다.
-- **생성물 제외**: `data/`, `output/`은 `fetch`/`build-report` 실행 시마다
-  재생성되는 산출물이라 `.gitignore`로 제외돼 있다.
+Funder가 `N`이어도 KISTI 지원이 없다는 뜻은 아니다. 일부 출판사는 funder 목록을
+불완전하게 채우므로 Ack를 따로 확인한다.
+
+## 4. SCIE 판정과 보고서 (`src/jcr.py`, `src/csv_writer.py`, `src/xlsx_report.py`)
+
+- SCIE 여부·JIF·상위%는 사람이 JCR에서 정리한 `config/journals_<연도>.tsv`를
+  ISSN으로 매칭해 채운다. 표에 없는 저널은 `python main.py journals`로 뽑아 추가한다.
+- `유발논문` = SCIE이고 Auth·Ack·Funder 중 하나 이상이 근거로 인정될 때 `Y`.
+  ISSN이 없거나 SCIE가 아니면 `N`, 표에 없는 저널이면 보류다.
+- 엑셀 행 색: 녹색(유발논문), 파란색(공식 목록에 출판 표기), 노란색(INSPIRE·OpenAlex로만
+  출판 확인), 회색(그 외).
+- 논문별 수동 메모는 `config/paper_notes.yaml`에 DOI로 적으면 `비고`에 붙는다.
+
+## 설정 파일
+
+| 파일 | 내용 |
+|---|---|
+| `config/communities.yaml` | 커뮤니티별 목록 소스·다운로더·INSPIRE 검색식·참고용 여부 |
+| `config/responsible_authors.yaml` | 커뮤니티별 담당자 이름·ORCID (ORCID 권장) |
+| `config/settings.yaml` | API 주소, KISTI funder ID, ISSN fallback, 출력 경로, 캐시 |
+| `config/journals_<연도>.tsv` | JCR SCIE·JIF 표 (라이선스 문제로 커밋 안 함) |
+| `config/paper_notes.yaml` | 논문별 수동 메모 |
+
+## 참고
+
+- INSPIRE·CrossRef 조회 결과와 확정된 근거 판정은 `data/cache.sqlite`에 캐시한다.
+  미출판 논문은 캐시하지 않아 매 실행마다 출판 여부를 다시 확인한다.
+- `data/`, `output/`은 실행할 때마다 다시 만들어지는 산출물이라 커밋하지 않는다.
+- 담당자 ORCID는 공개 식별자라 `responsible_authors.yaml`에 넣어 커밋한다.
+  공개하지 않을 메모는 `config/*.local.yaml`에 둔다.
