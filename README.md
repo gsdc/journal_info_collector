@@ -1,7 +1,8 @@
 # journal_info_collector
 
-KISTI/GSDC가 지원하는 실험 커뮤니티(CMS, ALICE, Belle II, LIGO)의 논문 목록을
-각 커뮤니티 공식 게시 페이지에서 수집하고, INSPIRE-HEP·CrossRef로 서지정보를
+KISTI/GSDC가 지원하는 실험 커뮤니티 11곳(CMS, ALICE, Belle II, LIGO, DUNE,
+JSNS2, HK/SK, RENE, FCC, EIC, ENIGMA)의 논문 목록을 각 커뮤니티 공식 게시
+페이지(없으면 INSPIRE-HEP·OpenAlex 검색)에서 수집하고, INSPIRE-HEP·CrossRef로 서지정보를
 보강한 뒤, "이 논문에 KISTI/GSDC 담당자가 저자로 참여했는지(Auth)"와
 "사사(Acknowledgements)에 KISTI/GSDC가 언급됐는지(Ack)"를 판정해 보고서용
 CSV(`output/journal_report.csv`)를 만드는 파이프라인이다.
@@ -50,8 +51,12 @@ python main.py scan-ack-gap [--community CMS ...] [--year 2026 | --since-days 73
 
 ## 커뮤니티별 다운로더 — 논문 목록을 어떻게 찾아내는가
 
-커뮤니티 판별은 "INSPIRE에서 검색"하는 방식이 아니라, **각 커뮤니티가
-공식적으로 게시하는 논문 목록 페이지를 그대로 스크래핑**하는 방식이다.
+커뮤니티 판별은 **각 커뮤니티가 공식적으로 게시하는 논문 목록 페이지를 그대로
+스크래핑**하는 방식이 기본이다(CMS, ALICE, Belle II, LIGO). 공식 목록을 쓸 수
+없는 커뮤니티(DUNE, JSNS2, HK/SK, RENE, FCC, EIC, ENIGMA)만 INSPIRE-HEP 또는
+OpenAlex 검색 결과를 목록으로 대신 쓴다. 이 7곳은 `reference_only: true`인
+참고용 커뮤니티로, 수집·근거 판정은 똑같이 하지만 최종 보고서와 유발논문
+집계에서 빠지고 `output/journal_report_reference.csv`에 따로 나온다.
 `config/communities.yaml`에 커뮤니티별 `url`과 `downloader` 키가 정의돼
 있고, `src/downloaders/registry.py`의 `DOWNLOADERS` 딕셔너리가 그 키를
 실제 다운로더 클래스로 연결한다(`src/downloaders/base.py`의
@@ -60,10 +65,12 @@ python main.py scan-ack-gap [--community CMS ...] [--year 2026 | --since-days 73
 
 | 커뮤니티 | 소스 | 파싱 방식 |
 |---|---|---|
-| CMS | `CMS_publications.csv` | `csv.DictReader`로 바로 파싱. `DOI`/`Reference` 컬럼으로 상태(published/submitted/accepted/superseded) 판정 |
+| CMS | `cms-results.web.cern.ch/cms-results/public-results/publications/CMS/CMS_publications.csv` | `csv.DictReader`로 바로 파싱. `DOI`/`Reference` 컬럼으로 상태(published/submitted/accepted/superseded) 판정 |
 | ALICE | `alice-publications.web.cern.ch/publications` | 페이지네이션 있는 HTML 테이블(`views-table`)을 BeautifulSoup으로 순회. 행마다 `<li>` 텍스트가 `"Article reference: ..."`로 시작하면 그 안의 `doi.org` 링크로 DOI 추출. DOI 없는 논문(미출판)은 제외 |
 | Belle II | `docs.belle2.org/pub_data/publications/` | 페이지네이션 있는 HTML 테이블(`table-hover`). 4번째 컬럼이 링크면 `published`+DOI, 텍스트만 있으면 `"published"`/`"submitted"` 접두어로 상태 판정. 날짜 컬럼이 없어 arXiv ID(`YYMM.NNNNN`)에서 연-월을 근사(`date_filter.arxiv_id_to_date`) |
 | LIGO | `pnp.ligo.org/ppcomm/Papers.html` | 단일 페이지 HTML 테이블(`<tbody id="Table">`). "Journal citation" 셀 텍스트에서 정규식 `doi:(\S+)`로 DOI를 뽑아냄. LSC/Virgo/KAGRA 공동 논문도 전부 `LIGO`로 표시 |
+| DUNE, JSNS2, HK/SK, RENE, FCC, EIC (참고용) | `inspirehep.net/api/literature` | 공식 목록이 없거나 읽을 수 없어(DUNE은 공개 페이지에 목록이 없고 실제 목록은 Cloudflare 봇 차단) INSPIRE literature API를 컬래버레이션 이름(`inspire_collaboration(s)`) 또는 직접 쓴 검색식(`inspire_query`)으로 검색. `document_type`이 article인 레코드만 남기고, DOI·arXiv가 모두 없거나 저자 수가 `collab_min_authors`(기본 100) 미만이면 제외 |
+| ENIGMA (참고용) | `api.openalex.org/works` | 고에너지물리가 아니라 INSPIRE에 없어 OpenAlex 검색(`openalex_queries`: 검색어 + 선택적 저자 ID 한정)을 OR로 합침. 같은 이름의 다른 컨소시엄이 있어 정식 명칭이나 핵심 저자로 한정. DOI 있는 저널 논문만 남김 |
 
 새 커뮤니티를 추가할 때는 `BaseDownloader`를 상속한 클래스를 만들고
 `registry.py`의 `DOWNLOADERS`에 키를 등록한 뒤 `communities.yaml`에
