@@ -8,7 +8,7 @@ from .base import BaseDownloader
 class InspireCollabDownloader(BaseDownloader):
     """공식 논문 목록 페이지를 직접 읽을 수 없는 커뮤니티용: INSPIRE-HEP에서
     컬래버레이션 이름으로 검색한 결과를 논문 목록으로 쓴다.
-    (예: DUNE 공식 페이지는 목록을 JavaScript로 그려서 HTML에 내용이 없다.)
+    (예: DUNE 공식 목록 페이지는 Cloudflare 봇 차단에 막혀 있다.)
 
     url은 INSPIRE literature API 주소, 검색식은 inspire_collaboration(들) 또는
     inspire_query 설정으로 만든다(reconcile.collab_query). 다른 커뮤니티 페이지가 컬래버레이션 명의

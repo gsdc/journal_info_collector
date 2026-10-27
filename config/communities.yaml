@@ -38,17 +38,18 @@ communities:
     url: "https://pnp.ligo.org/ppcomm/Papers.html"
     inspire_collaboration: "LIGO"
 
-  # DUNE 공식 페이지(dunescience.org/publications)는 목록을 JavaScript로 그려서
-  # 직접 읽을 수 없어, INSPIRE 컬래버레이션 검색 결과를 목록으로 쓴다.
+  # 중성미자(NGNU): DUNE, JSNS2, HK/SK, RENE. 모두 공식 논문 목록 페이지를 쓸 수
+  # 없어 INSPIRE 검색을 목록으로 쓴다. collab_min_authors는 컬래버레이션 명의
+  # 논문으로 볼 최소 저자 수(기본 100) — 소규모 실험은 낮춘다.
+
+  # DUNE 공개 페이지(www.dunescience.org/publications)는 본문 없이 링크만 있고,
+  # 실제 목록(atwork.dunescience.org/publications)은 Cloudflare 봇 차단(403)에 막혀 있다.
   - name: DUNE
     reference_only: true      # 참고용: 유발논문 판정 대상 아님(논문 수 파악용)
     downloader: inspire_collab
     url: "https://inspirehep.net/api/literature"
     inspire_collaboration: "DUNE"
 
-  # 중성미자(NGNU): DUNE, JSNS2, HK/SK, RENE. 모두 공식 논문 목록 페이지를 쓸 수
-  # 없어 INSPIRE 검색을 목록으로 쓴다. collab_min_authors는 컬래버레이션 명의
-  # 논문으로 볼 최소 저자 수(기본 100) — 소규모 실험은 낮춘다.
   - name: JSNS2
     reference_only: true      # 참고용: 유발논문 판정 대상 아님(논문 수 파악용)
     downloader: inspire_collab
