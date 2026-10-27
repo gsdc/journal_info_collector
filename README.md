@@ -30,7 +30,7 @@ flowchart TD
     L --> M["output/journal_report.csv"]
 ```
 
-`main.py fetch`가 A\~K까지를 담당하고, 사사(Ack)의 최종 Y/N 판정과 원본 대비
+`main.py fetch`가 A\~K까지를 담당하고, 사사(Ack)의 최종 Y/N 판정과 커뮤니티 공식 출판목록 대비
 서지정보 불일치 검토는 `.claude/commands/build-report.md`(`/build-report`
 슬래시 커맨드)에서 LLM이 `data/candidates.json`을 읽어 수행한다(L~M).
 
@@ -87,9 +87,9 @@ INSPIRE-HEP으로 다시 확인한다.
    있으면 `GET /doi/{doi}`로 먼저 조회한다. 못 찾거나 DOI 자체가 없으면
    `GET /arxiv/{arxiv_id}`로 재조회한다. arXiv 경로가 필요한 이유는 두
    가지다: (a) 출판사에서 막 DOI가 발급됐는데 INSPIRE의 `dois` 필드
-   반영이 며칠 지연되는 경우, (b) 원본 페이지엔 아직 DOI가 없지만
+   반영이 며칠 지연되는 경우, (b) 커뮤니티 공식 출판목록엔 아직 DOI가 없지만
    INSPIRE는 이미 출판을 인지한 "숨은 출판" 케이스.
-2. **effective DOI** — 원본에 DOI가 없어도 INSPIRE 레코드에 DOI가 있으면
+2. **effective DOI** — 커뮤니티 공식 출판목록에 DOI가 없어도 INSPIRE 레코드에 DOI가 있으면
    그걸 최종 DOI로 채택하고(`effective_doi`), 이 값의 존재 여부로
    `publication_status`를 `"published"`로 확정한다.
 3. **필드 매핑** — INSPIRE 레코드에서 `journal_title`/`journal_volume`/
