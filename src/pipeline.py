@@ -743,14 +743,9 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
 
     today = date.today()
     cfg_by_name = {c["name"]: c for c in communities}
-    # SCIE 여부·JIF·상위%는 사람이 갱신하는 JCR 표에서 매번 다시 채운다(확정 판정과 별개).
-    jcr_table = load_jcr_table(year) if year is not None else {}
-    pairs = _issn_pairs(settings)
+    if year is not None:
+        refresh_scie(candidates, year, settings)
     for c in candidates:
-        if c.get("publication_status") == "published":
-            c["scie"], c["jif"], c["jif_top_pct"] = scie_fields(
-                jcr_table, c.get("issn"), c.get("eissn"), pairs
-            )
         d = parse_date(c.get("date"))
         c["pub_date_future"] = bool(d and d > today)
         c["source_label"] = _source_label(
@@ -764,6 +759,18 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
         json.dump(audits, f, ensure_ascii=False, indent=2)
     print(f"[audit] 다운로드 기록 -> {audit_path}", file=sys.stderr)
     return candidates, settings
+
+
+def refresh_scie(candidates, year, settings):
+    """SCIE 여부·JIF·상위%는 사람이 갱신하는 JCR 표(config/journals_<연도>.tsv)에서
+    매번 다시 채운다(확정 판정과 별개). report도 호출해 표 수정이 fetch 없이 반영된다."""
+    jcr_table = load_jcr_table(year)
+    pairs = _issn_pairs(settings)
+    for c in candidates:
+        if c.get("publication_status") == "published":
+            c["scie"], c["jif"], c["jif_top_pct"] = scie_fields(
+                jcr_table, c.get("issn"), c.get("eissn"), pairs
+            )
 
 
 def save_candidates(candidates, settings):

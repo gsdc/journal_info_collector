@@ -35,7 +35,7 @@ import json
 from src import config
 from src.ack_gap_scan import scan_computing_ack_gap
 from src.csv_writer import write_csv_reports
-from src.pipeline import build_candidates, save_candidates
+from src.pipeline import build_candidates, refresh_scie, save_candidates
 from src.journal_list import write_journal_list
 from src.reconcile import run_reconcile
 from src.xlsx_report import write_xlsx_report
@@ -100,6 +100,7 @@ def main():
         settings = config.load_settings()
         with open(args.candidates or settings["output"]["candidates_path"], encoding="utf-8") as f:
             candidates = json.load(f)
+        refresh_scie(candidates, args.year, settings)
         write_reports(args.year, candidates, settings)
 
     elif args.cmd == "journals":
