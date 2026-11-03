@@ -26,7 +26,8 @@
       -> 최종 결과를 CSV(output/journal_report.csv, 참고용은
          output/journal_report_reference.csv)와 엑셀 파일 하나
          (output/journal_report_2026.xlsx)로 정리. 엑셀은 요약 탭 + 커뮤니티별 탭
-         (참고용은 "(참고) " 접두) + 출판 미확인 탭.
+         (참고용은 "(참고) " 접두) + 출판 미확인 탭. 커뮤니티 전달용 funder 수정 요청
+         목록(output/funder_requests_2026.xlsx)도 함께 만든다.
          fetch를 --year로 전체 커뮤니티 실행하면 끝에 자동 실행됨.
 """
 import argparse
@@ -35,6 +36,7 @@ import json
 from src import config
 from src.ack_gap_scan import scan_computing_ack_gap
 from src.csv_writer import write_csv_reports
+from src.funder_requests import write_funder_requests
 from src.pipeline import build_candidates, refresh_scie, save_candidates
 from src.journal_list import write_journal_list
 from src.reconcile import run_reconcile
@@ -46,6 +48,8 @@ def write_reports(year, candidates, settings):
     for path, n in write_csv_reports(candidates, settings):
         print(f"[report] CSV {n}건 -> {path}")
     print(f"[report] 엑셀 -> {write_xlsx_report(year, candidates=candidates, settings=settings)}")
+    path, n = write_funder_requests(year, candidates, settings)
+    print(f"[report] funder 수정 요청 {n}건 -> {path}")
 
 
 def main():

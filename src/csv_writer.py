@@ -84,6 +84,9 @@ def _notes(row):
 
 
 def funder_fix(row):
+    if row.get("Funder") in ("", "N") and row.get("Ack") == "Y":
+        # 유발 판정은 본문 사사로 충분하지만, funder 정보는 고쳐 달라고 커뮤니티에 전달한다.
+        return "본문 사사엔 KISTI가 있으나 funder ID 없음 → KISTI ID 추가 요청"
     return _FUNDER_FIX.get(row.get("Funder"), "")
 
 

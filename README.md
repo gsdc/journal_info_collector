@@ -60,6 +60,7 @@ python main.py scan-ack-gap --year 2026  # 컴퓨팅 센터는 감사하는데 K
 | `output/journal_report_reference.csv` | 참고용 커뮤니티 보고서 |
 | `output/reconcile_report.md` | 출처별로 한쪽에만 있는 논문(누락 의심) |
 | `output/journals_<연도>.txt` | JCR에서 SCIE·JIF를 찾아 넣을 저널 목록 |
+| `output/funder_requests_<연도>.xlsx` | 커뮤니티 전달용 funder 수정 요청(KISTI 누락·KIST 오태깅·ID 누락) |
 
 ## 1. 논문 목록 수집 (`src/downloaders/`)
 
@@ -129,7 +130,9 @@ CrossRef funder 목록에서 KISTI funder ID(`10.13039/501100003708`)를 찾는�
 | `N` / 없음 | KISTI 항목 없음 / 출판사가 funder를 등록 안 함 | X |
 
 Funder가 `N`이어도 KISTI 지원이 없다는 뜻은 아니다. 일부 출판사는 funder 목록을
-불완전하게 채우므로 Ack를 따로 확인한다.
+불완전하게 채우므로 Ack를 따로 확인한다. 본문 사사가 우선이라 사사 Y면 Funder와
+무관하게 유발 근거로 충분하고, funder에 KISTI가 빠지거나 잘못 등록된 논문은
+`output/funder_requests_<연도>.xlsx`로 모아 커뮤니티에 수정을 요청한다.
 
 ## 4. SCIE 판정과 보고서 (`src/jcr.py`, `src/csv_writer.py`, `src/xlsx_report.py`)
 
