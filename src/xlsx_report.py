@@ -58,6 +58,13 @@ def source_urls(community_cfg):
             ("OpenAlex 검색", "https://api.openalex.org/works?search=" + quote(q["search"]))
             for q in community_cfg.get("openalex_queries", [])
         ]
+    if downloader == "openalex_orcid":
+        return [
+            (f"OpenAlex: {p.get('name') or p['orcid']}",
+             "https://api.openalex.org/works?filter=authorships.author.orcid:" + quote(str(p["orcid"])))
+            for p in community_cfg.get("professors") or []
+            if p.get("orcid")
+        ]
     url = community_cfg["url"]
     if downloader == "alice_html":
         base = url.rstrip("/").rsplit("/", 1)[0]

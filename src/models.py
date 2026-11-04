@@ -30,6 +30,9 @@ class RawPublication:
     origin: str = "community"
     # 원본 데이터 문제를 고쳤거나 의심될 때 남기는 메모(후보의 note에 붙는다)
     source_note: str = ""
+    # PubMed Central ID(OpenAlex가 알려 줄 때). arXiv 원문이 없는 논문의 사사를
+    # Europe PMC 전문에서 찾을 때 검색을 건너뛰는 데 쓴다.
+    pmcid: Optional[str] = None
 
 
 @dataclass

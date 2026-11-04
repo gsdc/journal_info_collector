@@ -14,6 +14,7 @@ from .crossref_client import CrossrefClient
 from .crossref_client import is_complete as crossref_is_complete
 from .date_filter import in_range, parse_date
 from .downloaders.registry import get_downloader
+from .europepmc_fetcher import EuropePmcFetcher
 from .inspire_client import InspireClient, normalize_title
 from .jcr import load_jcr_table, scie_fields
 from .models import RawPublication
@@ -360,12 +361,16 @@ def _source_label(c, community_cfg, openalex_dois, openalex_existing=None):
         page = "없음"
     elif community_cfg.get("downloader") == "inspire_collab":
         page = "공식목록 없음"
+    elif community_cfg.get("downloader") == "openalex_orcid":
+        page = "교수 ORCID 검색"
     else:
         # 알려진 상태가 아니면(예: LIGO 저널 칸에 DOI도 "submitted"도 아닌 문구) "기타 표기"
         page = _PAGE_STATUS_LABEL.get(c.get("raw_status"), "기타 표기")
 
     published = c.get("publication_status") == "published"
-    if c.get("inspire_title") is None and not c.get("collaborations"):
+    if not community_cfg.get("use_inspire", True):
+        inspire = "조회 안 함"
+    elif c.get("inspire_title") is None and not c.get("collaborations"):
         inspire = "X"
     elif not published:
         # 미출판 논문의 INSPIRE 레코드는 arXiv 프리프린트일 뿐 출판 확인이 아니다
@@ -452,6 +457,7 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
     inspire_client = InspireClient(settings, cache=cache)
     crossref_client = CrossrefClient(settings, cache=cache)
     arxiv_fetcher = ArxivFetcher(settings)
+    europepmc_fetcher = EuropePmcFetcher(settings)
     kisti_funder_doi = settings["crossref"]["kisti_funder_doi"]
 
     openalex_dois, openalex_md = None, {}
@@ -491,7 +497,8 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
     for community_cfg in communities:
         name = community_cfg["name"]
         print(f"[fetch] {name}: downloading list from {community_cfg['url']}", file=sys.stderr)
-        downloader = get_downloader(community_cfg)
+        # 조사 연도를 아는 다운로더(openalex_orcid)는 그 연도 앞뒤만 받는다.
+        downloader = get_downloader({**community_cfg, "_year": year})
         try:
             raw_pubs = downloader.fetch()
         except Exception as e:  # noqa: BLE001
@@ -572,9 +579,13 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
                 candidates.append(final)
                 continue
 
-            inspire_record, match_status, note = _resolve_inspire_record(
-                inspire_client, raw.doi, raw.arxiv_id
-            )
+            if community_cfg.get("use_inspire", True):
+                inspire_record, match_status, note = _resolve_inspire_record(
+                    inspire_client, raw.doi, raw.arxiv_id
+                )
+            else:
+                # 고에너지물리가 아닌 커뮤니티(TEM·PAL 등)는 INSPIRE에 없으므로 조회하지 않는다.
+                inspire_record, match_status, note = None, "ok", ""
 
             # source 페이지엔 DOI가 없어도 INSPIRE가 이미 알고 있으면 그 DOI를 쓴다.
             effective_doi = raw.doi or (inspire_record.doi if inspire_record else None)
@@ -644,8 +655,18 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
             # 사사 원문을 별도로 확인한다. 미출판 논문은 최종 보고서에서 빠지므로
             # arXiv 다운로드(건당 수 초)를 생략한다.
             ack_excerpt, ack_note, ack_mentions, ack_mentions_kist = "", "", None, False
+            ack_source = ""
             if publication_status == "published":
                 ack_excerpt, ack_note, ack_mentions, ack_mentions_kist = arxiv_fetcher.fetch_ack(raw.arxiv_id)
+                ack_source = "arxiv"
+                # arXiv 원문이 없거나 사사를 못 찾으면 Europe PMC 전문(PMC 오픈액세스)에서 찾는다.
+                if ack_mentions is None and not ack_excerpt and effective_doi:
+                    pmc = europepmc_fetcher.fetch_ack(effective_doi, raw.pmcid)
+                    if pmc[2] is not None or pmc[0]:
+                        ack_excerpt, ack_note, ack_mentions, ack_mentions_kist = pmc
+                        ack_source = "europepmc"
+                    else:
+                        ack_note, ack_source = f"{ack_note} / {pmc[1]}", ""
             else:
                 ack_note = "미출판이라 원문 확인 생략"
             if ack_mentions:
@@ -698,6 +719,7 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
                     "ack_text_evidence": ack_mentions or [],
                     "ack_excerpt": ack_excerpt,
                     "ack_note": ack_note,
+                    "ack_source": ack_source,  # 사사 원문 출처: arxiv / europepmc / ""(못 구함)
                     "match_status": match_status,
                     "note": " / ".join(n for n in (raw.source_note, note) if n),
                     "origin": raw.origin,

@@ -43,6 +43,14 @@ responsible_authors:
   ENIGMA:
     - name: "Sangwook Bae"
       orcid: "0000-0003-2429-3357"
+  # TEM·PAL은 교수 명단(communities.yaml의 professors)으로 논문을 모으고, 여기에는
+  # 논문 저자로 들어가는 KISTI/GSDC 담당자가 있을 때만 적는다.
+  TEM:
+    - name: ""
+      orcid: ""
+  PAL:
+    - name: ""
+      orcid: ""
   LIGO:
     - name: "Sangwook Bae"
       orcid: "0000-0003-2429-3357"

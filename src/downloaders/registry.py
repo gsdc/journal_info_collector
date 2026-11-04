@@ -3,6 +3,7 @@ from .belle2 import Belle2Downloader
 from .cms import CmsDownloader
 from .inspire_collab import InspireCollabDownloader
 from .ligo import LigoDownloader
+from .openalex_orcid import OpenAlexOrcidDownloader
 from .openalex_search import OpenAlexSearchDownloader
 
 DOWNLOADERS = {
@@ -12,6 +13,7 @@ DOWNLOADERS = {
     "ligo_html": LigoDownloader,
     "inspire_collab": InspireCollabDownloader,
     "openalex_search": OpenAlexSearchDownloader,
+    "openalex_orcid": OpenAlexOrcidDownloader,
 }
 
 

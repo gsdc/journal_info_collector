@@ -122,6 +122,32 @@ communities:
           - A5100608577       # ENIGMA 담당자(responsible_authors.yaml), 주 레코드
           - A5101314706       # ENIGMA 담당자, OpenAlex 분리 레코드
 
+  # TEM(투과전자현미경)·PAL(포항가속기연구소): 장비 사용자 논문을 모아 둔 공식 목록이
+  # 없어, 주요 사용자 교수의 ORCID로 OpenAlex에서 그 교수들의 저널 논문을 모은다
+  # (downloader: openalex_orcid). 교수 논문 전체가 장비를 쓴 논문은 아니므로 목록은
+  # 후보이고, 유발 여부는 SCIE·사사(Ack)·funder 판정으로 가린다.
+  # - 사사는 arXiv 원문이 대개 없어 Europe PMC 전문(PMC 오픈액세스)에서 찾는다.
+  #   PMC에 없는 논문은 Ack "미확인"으로 남는다(사람 확인).
+  # - INSPIRE에 없는 분야라 INSPIRE 조회를 끈다(use_inspire: false). 저자 대조(Auth)는
+  #   CrossRef 저자 목록으로 한다.
+  # professors: 교수 이름(표시용)과 ORCID("0000-0000-0000-0000"). ORCID가 하나도 없으면
+  #   이 커뮤니티는 실행에서 빠진다(경고 출력).
+  - name: TEM
+    downloader: openalex_orcid
+    url: "https://api.openalex.org/works"
+    use_inspire: false
+    professors:
+      # - name: "홍길동"
+      #   orcid: "0000-0000-0000-0000"
+
+  - name: PAL
+    downloader: openalex_orcid
+    url: "https://api.openalex.org/works"
+    use_inspire: false
+    professors:
+      # - name: "홍길동"
+      #   orcid: "0000-0000-0000-0000"
+
   # 추가 커뮤니티는 아래처럼 등록하고, src/downloaders/ 에 맞는 다운로더를 구현하면 됨.
   # - name: KIAF
   #   downloader: <다운로더 키>

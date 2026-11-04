@@ -72,6 +72,7 @@ python main.py scan-ack-gap --year 2026  # 컴퓨팅 센터는 감사하는데 K
 | LIGO | `pnp.ligo.org/ppcomm/Papers.html` | `ligo_html` |
 | DUNE, JSNS2, HK/SK, RENE, FCC, EIC | INSPIRE-HEP 컬래버레이션 검색 | `inspire_collab` |
 | ENIGMA | OpenAlex 검색 | `openalex_search` |
+| TEM, PAL | 주요 사용자 교수 ORCID로 OpenAlex 검색 | `openalex_orcid` |
 
 - 위 4곳은 커뮤니티 공식 출판목록을 그대로 읽는다. 나머지 7곳은 공식 목록이
   없거나 읽을 수 없어 검색 결과를 쓴다(DUNE 목록은 Cloudflare 봇 차단에 막혀 있음).
@@ -79,6 +80,12 @@ python main.py scan-ack-gap --year 2026  # 컴퓨팅 센터는 감사하는데 K
   집계와 최종 보고서에서 빠진다.
 - 공식 목록에 없어도 INSPIRE 컬래버레이션 출판 목록이나 OpenAlex KISTI 검색
   (KISTI funder·KISTI 소속·담당자 ORCID)에서 찾은 논문은 보충한다.
+- TEM(투과전자현미경)·PAL(포항가속기연구소)은 장비 사용자 논문을 모은 공식 목록이 없어,
+  `communities.yaml`의 `professors`에 주요 사용자 교수의 이름·ORCID를 넣으면 그 교수들의
+  저널 논문(article·review·letter)을 OpenAlex에서 모은다. 교수 논문 전체가 장비를 쓴 논문은
+  아니므로 목록은 후보이고, 유발 여부는 SCIE·Ack·Funder 판정으로 가린다. INSPIRE에 없는
+  분야라 `use_inspire: false`로 INSPIRE 조회를 끄고, 저자 대조는 CrossRef 저자 목록으로 한다.
+  게재 연도는 OpenAlex 값이 아니라 CrossRef 게재일로 판단한다.
 - 커뮤니티 추가: `BaseDownloader.fetch()`를 구현하고 `registry.py`에 등록한 뒤
   `config/communities.yaml`에 항목을 넣는다.
 
@@ -112,6 +119,9 @@ python main.py scan-ack-gap --year 2026  # 컴퓨팅 센터는 감사하는데 K
 arXiv e-print를 받아 사사 영역에서 "KISTI", "Korea Institute of Science and
 Technology Information", "GSDC", "Global Science (experimental) Data hub
 Center"를 찾는다. KIST(Information 없음)는 별개 기관이라 인정하지 않는다.
+arXiv 원문이 없거나 사사를 못 찾으면 Europe PMC 전문 XML(PMC 오픈액세스)의
+`<ack>`·funding 영역에서 같은 표기를 찾는다(`src/europepmc_fetcher.py`, TEM·PAL 등
+생명과학·재료 분야 논문). 사사 원문 출처는 candidate의 `ack_source`(`arxiv`/`europepmc`)에 남는다.
 결과는 `Y` / `N` / `미확인`(원문을 못 구함)이다. `/build-report`가 `N`인 논문의
 발췌를 다시 보고, 놓친 표기가 있으면 `config/review_overrides.yaml`로 고친다.
 

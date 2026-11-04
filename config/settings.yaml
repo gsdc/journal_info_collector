@@ -24,6 +24,13 @@ arxiv:
     - "ack"
     - "acknowledg"
 
+# arXiv 원문이 없거나 사사를 못 찾은 출판 논문은 Europe PMC 전문(JATS XML)의
+# <ack>·funding 영역에서 KISTI/GSDC를 찾는다(TEM·PAL 등 생명과학·재료 분야 논문).
+europepmc:
+  base_url: "https://www.ebi.ac.uk/europepmc/webservices/rest"
+  request_delay_sec: 0.5
+  timeout_sec: 60
+
 output:
   csv_path: "output/journal_report.csv"
   reference_csv_path: "output/journal_report_reference.csv"   # 참고용 커뮤니티(reference_only)
