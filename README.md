@@ -121,7 +121,13 @@ Technology Information", "GSDC", "Global Science (experimental) Data hub
 Center"를 찾는다. KIST(Information 없음)는 별개 기관이라 인정하지 않는다.
 arXiv 원문이 없거나 사사를 못 찾으면 Europe PMC 전문 XML(PMC 오픈액세스)의
 `<ack>`·funding 영역에서 같은 표기를 찾는다(`src/europepmc_fetcher.py`, TEM·PAL 등
-생명과학·재료 분야 논문). 사사 원문 출처는 candidate의 `ack_source`(`arxiv`/`europepmc`)에 남는다.
+생명과학·재료 분야 논문). 거기에도 없으면 출판사 원문 HTML(CrossRef text-mining 링크,
+없으면 doi.org 주소)의 Acknowledgements·Funding 절을 찾는다(`src/html_ack_fetcher.py`).
+마지막으로 오픈액세스 PDF(CrossRef 출판사 PDF 링크, OpenAlex 공개 사본)의 같은 절을
+찾는다(`src/pdf_ack_fetcher.py`). 오픈액세스 원문(Nature 계열 등)은 대개 되고, 구독
+논문이나 자동 요청을 막는 곳(Elsevier·Wiley 페이지, PMC PDF의 봇 확인 등)은 우회하지
+않고 `미확인`으로 남긴다. 사사 원문 출처는 candidate의
+`ack_source`(`arxiv`/`europepmc`/`html`/`pdf`)에 남는다.
 결과는 `Y` / `N` / `미확인`(원문을 못 구함)이다. `/build-report`가 `N`인 논문의
 발췌를 다시 보고, 놓친 표기가 있으면 `config/review_overrides.yaml`로 고친다.
 

@@ -31,6 +31,18 @@ europepmc:
   request_delay_sec: 0.5
   timeout_sec: 60
 
+# arXiv·Europe PMC에서도 사사를 못 구하면 출판사 원문 HTML(CrossRef text-mining 링크,
+# 없으면 doi.org 주소)의 Acknowledgements·Funding 절을 찾는다. 오픈액세스 원문만 대개 가능.
+html_ack:
+  request_delay_sec: 1.0
+  timeout_sec: 30
+
+# 그래도 없으면 오픈액세스 PDF(CrossRef 출판사 PDF 링크 + OpenAlex 공개 사본)의
+# Acknowledgements·Funding 절을 찾는다(pypdf로 텍스트 추출).
+pdf_ack:
+  request_delay_sec: 1.0
+  timeout_sec: 60
+
 output:
   csv_path: "output/journal_report.csv"
   reference_csv_path: "output/journal_report_reference.csv"   # 참고용 커뮤니티(reference_only)

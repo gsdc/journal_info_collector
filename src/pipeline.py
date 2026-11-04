@@ -15,6 +15,8 @@ from .crossref_client import is_complete as crossref_is_complete
 from .date_filter import in_range, parse_date
 from .downloaders.registry import get_downloader
 from .europepmc_fetcher import EuropePmcFetcher
+from .html_ack_fetcher import HtmlAckFetcher
+from .pdf_ack_fetcher import PdfAckFetcher
 from .inspire_client import InspireClient, normalize_title
 from .jcr import load_jcr_table, scie_fields
 from .models import RawPublication
@@ -458,6 +460,8 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
     crossref_client = CrossrefClient(settings, cache=cache)
     arxiv_fetcher = ArxivFetcher(settings)
     europepmc_fetcher = EuropePmcFetcher(settings)
+    html_ack_fetcher = HtmlAckFetcher(settings)
+    pdf_ack_fetcher = PdfAckFetcher(settings)
     kisti_funder_doi = settings["crossref"]["kisti_funder_doi"]
 
     openalex_dois, openalex_md = None, {}
@@ -659,14 +663,26 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
             if publication_status == "published":
                 ack_excerpt, ack_note, ack_mentions, ack_mentions_kist = arxiv_fetcher.fetch_ack(raw.arxiv_id)
                 ack_source = "arxiv"
-                # arXiv 원문이 없거나 사사를 못 찾으면 Europe PMC 전문(PMC 오픈액세스)에서 찾는다.
-                if ack_mentions is None and not ack_excerpt and effective_doi:
-                    pmc = europepmc_fetcher.fetch_ack(effective_doi, raw.pmcid)
-                    if pmc[2] is not None or pmc[0]:
-                        ack_excerpt, ack_note, ack_mentions, ack_mentions_kist = pmc
-                        ack_source = "europepmc"
+                # arXiv 원문이 없거나 사사를 못 찾으면 Europe PMC 전문(PMC 오픈액세스),
+                # 출판사 원문 HTML 페이지, 오픈액세스 PDF에서 차례로 찾는다.
+                fallbacks = (
+                    ("europepmc", lambda: europepmc_fetcher.fetch_ack(effective_doi, raw.pmcid)),
+                    ("html", lambda: html_ack_fetcher.fetch_ack(
+                        effective_doi, crossref_record.html_links if crossref_record else ()
+                    )),
+                    ("pdf", lambda: pdf_ack_fetcher.fetch_ack(
+                        effective_doi, crossref_record.pdf_links if crossref_record else ()
+                    )),
+                )
+                for source, fetch in fallbacks:
+                    if ack_mentions is not None or ack_excerpt or not effective_doi:
+                        break
+                    found = fetch()
+                    if found[2] is not None or found[0]:
+                        ack_excerpt, ack_note, ack_mentions, ack_mentions_kist = found
+                        ack_source = source
                     else:
-                        ack_note, ack_source = f"{ack_note} / {pmc[1]}", ""
+                        ack_note, ack_source = f"{ack_note} / {found[1]}", ""
             else:
                 ack_note = "미출판이라 원문 확인 생략"
             if ack_mentions:
@@ -719,7 +735,7 @@ def build_candidates(community_names=None, year=None, limit_per_community=None):
                     "ack_text_evidence": ack_mentions or [],
                     "ack_excerpt": ack_excerpt,
                     "ack_note": ack_note,
-                    "ack_source": ack_source,  # 사사 원문 출처: arxiv / europepmc / ""(못 구함)
+                    "ack_source": ack_source,  # 사사 원문 출처: arxiv / europepmc / html / pdf / ""(못 구함)
                     "match_status": match_status,
                     "note": " / ".join(n for n in (raw.source_note, note) if n),
                     "origin": raw.origin,

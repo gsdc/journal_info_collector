@@ -31,7 +31,7 @@ description: Python이 만든 최종 결과(CSV·엑셀)를 재확인(사사 원
   `page`, `date`, `doi`, `match_status`, `publication_status`
 - Auth: `auth_status`, `auth_note`
 - Ack(사사 원문): `ack_text_status`, `ack_text_evidence`, `ack_excerpt`, `ack_note`
-  (`ack_source`: 발췌 출처 — `arxiv`는 LaTeX 원문, `europepmc`는 PMC 전문의 사사·funding 영역)
+  (`ack_source`: 발췌 출처 — `arxiv`는 LaTeX 원문, `europepmc`는 PMC 전문의 사사·funding 영역, `html`은 출판사 원문 페이지, `pdf`는 오픈액세스 PDF의 사사·Funding 절 — PDF 발췌는 줄바꿈·하이픈이 흐트러져 있을 수 있음)
 - Funder(CrossRef funder ID): `ack_funder_status`, `ack_funder_note`
 - SCIE: `scie`, `jif`, `jif_top_pct` (`config/journals_<연도>.tsv`에서)
 - `source_label`(출처), `reference_only`, `pub_date_future`

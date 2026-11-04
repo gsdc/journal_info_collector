@@ -27,6 +27,10 @@ class CrossrefRecord:
     # funder별 (DOI, 이름) 짝. 위 두 목록은 DOI 없는 funder 때문에 길이가 달라
     # 짝을 맞출 수 없으므로, "이름은 KISTI인데 DOI는 KIST" 같은 오태깅 판별에는 이걸 쓴다.
     funders: list = field(default_factory=list)  # list[{"doi": str|None, "name": str}]
+    # 출판사가 등록한 원문 HTML 주소(text-mining 링크). arXiv·PMC에 없는 논문의
+    # 사사를 원문 페이지에서 찾을 때 쓴다(src/html_ack_fetcher.py).
+    html_links: list = field(default_factory=list)
+    pdf_links: list = field(default_factory=list)  # 출판사 원문 PDF 주소(같은 용도, PDF)
 
 
 class CrossrefClient:
@@ -96,6 +100,16 @@ class CrossrefClient:
         funder_names = [f["name"] for f in funders if f.get("name")]
         funder_pairs = [{"doi": f.get("DOI"), "name": f.get("name", "")} for f in funders]
 
+        html_links = [
+            l["URL"] for l in message.get("link") or []
+            if l.get("URL") and l.get("content-type") in ("text/html", "unspecified")
+        ]
+
+        pdf_links = list(dict.fromkeys(
+            l["URL"] for l in message.get("link") or []
+            if l.get("URL") and l.get("content-type") == "application/pdf"
+        ))
+
         return CrossrefRecord(
             issn_list=issn_list,
             issn_print=issn_types.get("print"),
@@ -108,6 +122,8 @@ class CrossrefClient:
             funder_dois=funder_dois,
             funder_names=funder_names,
             funders=funder_pairs,
+            html_links=html_links,
+            pdf_links=pdf_links,
         )
 
 
@@ -132,4 +148,6 @@ def _record_from_dict(d):
         funder_dois=d.get("funder_dois", []),
         funder_names=d.get("funder_names", []),
         funders=d.get("funders", []),
+        html_links=d.get("html_links", []),
+        pdf_links=d.get("pdf_links", []),
     )
